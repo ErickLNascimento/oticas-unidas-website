@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Search,
@@ -46,9 +46,11 @@ import "./photo-guidance.css";
 import "./photo-guidance-fix.css";
 import "./mediapipe-tryon.css";
 import "./tryon-image-consistency.css";
-import { TEXTS } from "./content.js";
+import "./home-carousel.css";
+import { DEFAULT_CONTACT, DEFAULT_HOME_SLIDES, TEXTS } from "./content.js";
 import Checkout from "./Checkout.jsx";
 import { detectGlassesPlacement } from "./faceLandmarker.js";
+import { getAdminToken, loadSharedOrders, loadSharedStore, saveSharedSection, setAdminToken, updateSharedOrderStatus, uploadSharedMedia } from "./storeApi.js";
 
 const defaultFrames = [
   {
@@ -119,7 +121,26 @@ const frames = (() => {
     return defaultFrames;
   }
 })();
-const defaultContact = { instagram: "", facebook: "", email: "contato@oticasunidas.com.br", whatsapp: "", phone: "" };
+const defaultContact = DEFAULT_CONTACT;
+const contactDefaultsVersion = "2";
+
+function loadContactInfo() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("oticas-contact")) || {};
+    if (localStorage.getItem("oticas-contact-defaults-version") === contactDefaultsVersion) {
+      return { ...defaultContact, ...saved };
+    }
+    const migrated = { ...defaultContact, ...saved };
+    if (!saved.instagram) migrated.instagram = defaultContact.instagram;
+    if (!saved.whatsapp) migrated.whatsapp = defaultContact.whatsapp;
+    if (!saved.email || saved.email === "contato@oticasunidas.com.br") migrated.email = defaultContact.email;
+    localStorage.setItem("oticas-contact", JSON.stringify(migrated));
+    localStorage.setItem("oticas-contact-defaults-version", contactDefaultsVersion);
+    return migrated;
+  } catch {
+    return defaultContact;
+  }
+}
 
 function Glasses({ shape = "round", tone = "#222", large = false, category = "grau" }) {
   return (
@@ -183,7 +204,35 @@ function Header({ page, setPage, cart }) {
   );
 }
 
-function Home({ setPage, addCart }) {
+function EditorialCarousel({ slides, setPage }) {
+  const enabled = slides.filter((slide) => slide.active !== false);
+  const [active, setActive] = useState(0);
+  const track = useRef();
+  if (!enabled.length) return null;
+  function go(index) {
+    const next = (index + enabled.length) % enabled.length;
+    setActive(next);
+    track.current?.children[next]?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
+  }
+  function follow(link) {
+    if (!link) return;
+    if (/^https?:\/\//i.test(link)) window.open(link, "_blank", "noopener,noreferrer");
+    else setPage(link);
+  }
+  return <section className="editorialCarousel" aria-label="Destaques da Óticas Unidas">
+    <div className="editorialTrack" ref={track} onScroll={(event) => {
+      const width = event.currentTarget.clientWidth;
+      if (width) setActive(Math.round(event.currentTarget.scrollLeft / width));
+    }}>
+      {enabled.map((slide) => <article className="editorialSlide" key={slide.id} style={{ backgroundImage: `linear-gradient(90deg, rgba(35,29,25,.82), rgba(35,29,25,.12)), url(${slide.image})` }}>
+        <div><span className="eyebrow">{slide.eyebrow}</span><h2>{slide.title}</h2><p>{slide.description}</p>{slide.buttonLabel && <button className="primary" onClick={() => follow(slide.link)}>{slide.buttonLabel}<ArrowRight/></button>}</div>
+      </article>)}
+    </div>
+    {enabled.length > 1 && <><button className="carouselPrevious" onClick={() => go(active - 1)} aria-label="Destaque anterior">‹</button><button className="carouselNext" onClick={() => go(active + 1)} aria-label="Próximo destaque">›</button><div className="carouselDots">{enabled.map((slide, index) => <button key={slide.id} className={index === active ? "active" : ""} onClick={() => go(index)} aria-label={`Abrir destaque ${index + 1}`} />)}</div></>}
+  </section>;
+}
+
+function Home({ setPage, addCart, products, slides }) {
   return (
     <main>
       <section className="hero">
@@ -215,6 +264,7 @@ function Home({ setPage, addCart }) {
         </div>
       </section>
       <section className="benefits">{TEXTS.home.benefits.map((benefit) => <div key={benefit.title}><span><strong>{benefit.title}</strong>{benefit.description}</span></div>)}</section>
+      <EditorialCarousel slides={slides} setPage={setPage} />
       <section className="collection">
         <div className="sectionHead">
           <div>
@@ -233,7 +283,7 @@ function Home({ setPage, addCart }) {
           </p>
         </div>
         <div className="productGrid">
-          {frames.slice(0, 3).map((f) => (
+          {products.slice(0, 3).map((f) => (
             <ProductCard key={f.id} f={f} setPage={setPage} addCart={addCart} />
           ))}
         </div>
@@ -269,10 +319,10 @@ function ProductCard({ f, setPage, addCart }) {
   );
 }
 
-function Catalog({ setPage, addCart, category = "grau" }) {
+function Catalog({ setPage, addCart, products, category = "grau" }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("Todos");
-  const shown = frames.filter(
+  const shown = products.filter(
     (f) =>
       (f.category || "grau") === category &&
       (filter === "Todos" || f.type === filter) &&
@@ -318,18 +368,18 @@ function Catalog({ setPage, addCart, category = "grau" }) {
   );
 }
 
-function TryOn({ setPage }) {
+function TryOn({ setPage, products }) {
   const [photo, setPhoto] = useState(null);
-  const [selected, setSelected] = useState(frames[0]);
+  const [selected, setSelected] = useState(products[0]);
   const [result, setResult] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [placement, setPlacement] = useState(null);
   const [faceStatus, setFaceStatus] = useState("");
   const [tryCategory, setTryCategory] = useState("todos");
-  const tryFrames = frames.filter((frame) => tryCategory === "todos" || (frame.category || "grau") === tryCategory);
+  const tryFrames = products.filter((frame) => tryCategory === "todos" || (frame.category || "grau") === tryCategory);
   function changeTryCategory(category) {
     setTryCategory(category);
-    const first = frames.find((frame) => category === "todos" || (frame.category || "grau") === category);
+    const first = products.find((frame) => category === "todos" || (frame.category || "grau") === category);
     if (first) setSelected(first);
   }
   const input = useRef();
@@ -745,7 +795,19 @@ function Admin() {
 function App() {
   const [page, setPage] = useState("home");
   const [cart, setCart] = useState([]);
-  const [contactInfo, setContactInfo] = useState(() => { try { return JSON.parse(localStorage.getItem("oticas-contact")) || defaultContact; } catch { return defaultContact; } });
+  const [contactInfo, setContactInfo] = useState(loadContactInfo);
+  const [products, setProducts] = useState(frames);
+  const [slides, setSlides] = useState(DEFAULT_HOME_SLIDES);
+  useEffect(() => {
+    loadSharedStore().then((shared) => {
+      if (Array.isArray(shared.products)) {
+        setProducts(shared.products);
+        frames.splice(0, frames.length, ...shared.products);
+      }
+      if (shared.contact) setContactInfo({ ...defaultContact, ...shared.contact });
+      if (Array.isArray(shared.slides)) setSlides(shared.slides);
+    }).catch(() => {});
+  }, []);
   function addCart(f) {
     setCart((c) => {
       const old = c.find((x) => x.id === f.id);
@@ -754,16 +816,16 @@ function App() {
         : [...c, { ...f, qty: 1 }];
     });
   }
-  if (page === "admin") return <Admin contactInfo={contactInfo} setContactInfo={setContactInfo} />;
+  if (page === "admin") return <Admin contactInfo={contactInfo} setContactInfo={setContactInfo} products={products} setProducts={setProducts} slides={slides} setSlides={setSlides} />;
   return (
     <>
       <Header page={page} setPage={setPage} cart={cart} />
-      {page === "home" && <Home setPage={setPage} addCart={addCart} />}{" "}
-      {page === "catalog" && <Catalog setPage={setPage} addCart={addCart} />}{" "}
+      {page === "home" && <Home setPage={setPage} addCart={addCart} products={products} slides={slides} />}{" "}
+      {page === "catalog" && <Catalog setPage={setPage} addCart={addCart} products={products} />}{" "}
       {page === "sunglasses" && (
-        <Catalog category="sol" setPage={setPage} addCart={addCart} />
+        <Catalog category="sol" setPage={setPage} addCart={addCart} products={products} />
       )}
-      {page === "tryon" && <TryOn setPage={setPage} />}{" "}
+      {page === "tryon" && <TryOn setPage={setPage} products={products} />}{" "}
       {page === "cart" && (
         <Cart cart={cart} setCart={setCart} setPage={setPage} />
       )}
@@ -798,12 +860,58 @@ function AdminSection({ view, items }) {
 function ContactSettings({ value, onSave }) {
   const [draft, setDraft] = useState(value);
   const [saved, setSaved] = useState(false);
-  function submit(e) { e.preventDefault(); onSave(draft); localStorage.setItem("oticas-contact", JSON.stringify(draft)); setSaved(true); setTimeout(() => setSaved(false), 2200); }
+  async function submit(e) { e.preventDefault(); await onSave(draft); localStorage.setItem("oticas-contact", JSON.stringify(draft)); setSaved(true); setTimeout(() => setSaved(false), 2200); }
   const field = (key, label, placeholder, type = "text") => <label>{label}<input type={type} value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} placeholder={placeholder} /></label>;
   return <section className="adminSecondary contactSettings"><header><div><span className="eyebrow">CONFIGURAÇÕES</span><h1>Contato e redes</h1><p>Altere os dados exibidos no rodapé da loja.</p></div></header><form className="contactForm" onSubmit={submit}><div className="contactFormTitle"><Globe/><div><h2>Redes sociais e atendimento</h2><p>Deixe em branco os canais que não deseja exibir.</p></div></div>{field("instagram", "Instagram", "https://instagram.com/suaotica", "url")}{field("facebook", "Facebook", "https://facebook.com/suaotica", "url")}<div className="row">{field("email", "E-mail", "contato@suaotica.com", "email")}{field("whatsapp", "WhatsApp com DDD", "5592999999999")}</div>{field("phone", "Telefone", "(92) 3333-3333")}<button className="primary" type="submit">{saved ? <><Check/> Alterações salvas</> : "Salvar contatos"}</button></form></section>;
 }
 
-function SalesManager({ orders, setOrders }) {
+async function authorizedAdminAction(action) {
+  let token = getAdminToken();
+  if (!token) {
+    token = window.prompt("Digite a chave administrativa para salvar alterações globais:") || "";
+    if (!token) throw new Error("A chave administrativa é necessária.");
+    setAdminToken(token);
+  }
+  try { return await action(token); }
+  catch (error) {
+    if (error.status !== 401) throw error;
+    setAdminToken("");
+    const retry = window.prompt("Chave inválida. Digite novamente:") || "";
+    if (!retry) throw error;
+    setAdminToken(retry);
+    return action(retry);
+  }
+}
+
+function HighlightsManager({ slides, onSave }) {
+  const blank = { id: "", active: true, image: "/hero-optica.png", eyebrow: "DESTAQUE", title: "", description: "", buttonLabel: "Saiba mais", link: "catalog" };
+  const [editingSlide, setEditingSlide] = useState(null);
+  const [draft, setDraft] = useState(blank);
+  const [error, setError] = useState("");
+  const field = (key, label, placeholder) => <label>{label}<input value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} placeholder={placeholder} /></label>;
+  function edit(slide) { setEditingSlide(slide.id); setDraft({ ...slide }); setError(""); }
+  function add() { setEditingSlide("new"); setDraft(blank); setError(""); }
+  async function submit(event) {
+    event.preventDefault();
+    if (!draft.title.trim() || !draft.image.trim()) { setError("Informe o título e a URL da imagem."); return; }
+    const item = { ...draft, id: editingSlide === "new" ? `slide-${Date.now()}` : editingSlide, title: draft.title.trim(), image: draft.image.trim() };
+    const next = editingSlide === "new" ? [...slides, item] : slides.map((slide) => slide.id === editingSlide ? item : slide);
+    try { await onSave(next); setEditingSlide(null); setError(""); } catch (saveError) { setError(saveError.message); }
+  }
+  async function remove(id) {
+    if (!window.confirm("Remover este destaque da Home?")) return;
+    try { await onSave(slides.filter((slide) => slide.id !== id)); } catch (saveError) { setError(saveError.message); }
+  }
+  async function move(index, direction) {
+    const target = index + direction;
+    if (target < 0 || target >= slides.length) return;
+    const next = [...slides]; [next[index], next[target]] = [next[target], next[index]];
+    try { await onSave(next); } catch (saveError) { setError(saveError.message); }
+  }
+  return <section className="adminSecondary highlightsManager"><header><div><span className="eyebrow">CONTEÚDO DA HOME</span><h1>Destaques da Home</h1><p>Gerencie o carrossel editorial exibido para todos os clientes.</p></div><button className="primary" onClick={add}><Plus/> Novo destaque</button></header>{error && <p className="formError">{error}</p>}{slides.length ? <div className="highlightGrid">{slides.map((slide, index) => <article className="highlightCard" key={slide.id}><img src={slide.image} alt=""/><div><h3>{slide.title}</h3><p>{slide.active === false ? "Oculto" : "Visível"} · {slide.buttonLabel || "Sem botão"}</p></div><div className="highlightActions"><button onClick={() => move(index, -1)} disabled={!index}>↑</button><button onClick={() => move(index, 1)} disabled={index === slides.length - 1}>↓</button><button className="editButton" onClick={() => edit(slide)}><Edit3/> Editar</button><button className="deleteButton" onClick={() => remove(slide.id)}><Trash2/> Remover</button></div></article>)}</div> : <div className="emptyHighlights"><h2>Nenhum destaque cadastrado</h2><p>Adicione o primeiro conteúdo do carrossel da Home.</p></div>}{editingSlide && <div className="overlay"><form className="modal highlightForm" onSubmit={submit}><button type="button" className="close" onClick={() => setEditingSlide(null)}><X/></button><span className="eyebrow">CARROSSEL EDITORIAL</span><h2>{editingSlide === "new" ? "Novo destaque" : "Editar destaque"}</h2>{field("image", "URL da imagem", "https://... ou /hero-optica.png")}<div className="row">{field("eyebrow", "Chamada curta", "NOVIDADE")}{field("title", "Título", "Uma novidade para o seu olhar")}</div><label>Descrição<textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label><div className="row">{field("buttonLabel", "Texto do botão", "Saiba mais")}{field("link", "Destino", "catalog, tryon ou https://...")}</div><label className="highlightToggle"><input type="checkbox" checked={draft.active !== false} onChange={(event) => setDraft({ ...draft, active: event.target.checked })}/> Exibir este destaque</label>{error && <p className="formError">{error}</p>}<div className="modalActions"><button type="button" className="cancel" onClick={() => setEditingSlide(null)}>Cancelar</button><button className="primary" type="submit">Salvar destaque</button></div></form></div>}</section>;
+}
+
+function SalesManager({ orders, setOrders, onStatusChange }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [search, setSearch] = useState("");
   const money = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0);
@@ -811,13 +919,13 @@ function SalesManager({ orders, setOrders }) {
   const revenue = orders.reduce((total, order) => total + Number(order.total || 0), 0);
   function updateStatus(orderId, status) {
     const updated = orders.map((order) => order.id === orderId ? { ...order, status } : order);
-    setOrders(updated); localStorage.setItem("oticas-orders", JSON.stringify(updated));
+    setOrders(updated); localStorage.setItem("oticas-orders", JSON.stringify(updated)); onStatusChange?.(orderId, status).catch(() => {});
     setSelectedOrder((current) => current?.id === orderId ? { ...current, status } : current);
   }
   return <section className="adminSecondary salesManager"><header><div><span className="eyebrow">VENDAS</span><h1>Pedidos</h1><p>Gerencie pagamentos, clientes e entregas.</p></div></header><div className="stats"><div><small>Total vendido</small><b>{money(revenue)}</b><span>Todos os pedidos</span></div><div><small>Pedidos recebidos</small><b>{orders.length}</b><span className="green">Registrados no checkout</span></div><div><small>Aguardando pagamento</small><b>{orders.filter((order) => order.status?.includes("Aguardando")).length}</b><span className="red">Requer atenção</span></div></div><div className="tableBox"><div className="tableTools"><div className="search"><Search/><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar pedido ou cliente..."/></div></div>{filtered.length ? <table><thead><tr><th>PEDIDO</th><th>CLIENTE</th><th>PAGAMENTO</th><th>TOTAL</th><th>STATUS</th><th>AÇÕES</th></tr></thead><tbody>{filtered.map((order) => <tr key={order.id}><td>#{order.id}</td><td><span><b>{order.customer?.name}</b><small>{order.customer?.email}</small></span></td><td>{order.payment === "pix" ? "PIX" : "Cartão"}</td><td>{money(order.total)}</td><td><select className="statusSelect" value={order.status} onChange={(e) => updateStatus(order.id, e.target.value)}><option>Aguardando PIX</option><option>Confirmado</option><option>Em separação</option><option>Enviado</option><option>Entregue</option><option>Cancelado</option></select></td><td><button className="editButton" onClick={() => setSelectedOrder(order)}><Eye/> Ver detalhes</button></td></tr>)}</tbody></table> : <div className="noOrders"><ShoppingBag/><h2>Nenhum pedido encontrado</h2><p>As vendas concluídas no checkout aparecerão aqui.</p></div>}</div>{selectedOrder && <div className="overlay"><div className="modal orderModal"><button className="close" onClick={() => setSelectedOrder(null)}><X/></button><span className="eyebrow">PEDIDO #{selectedOrder.id}</span><h2>Detalhes da venda</h2><div className="orderDetailGrid"><div className="orderDetailBlock"><h3><User/> Cliente</h3><p><b>{selectedOrder.customer?.name}</b></p><p>{selectedOrder.customer?.email}</p><p>{selectedOrder.customer?.phone}</p>{selectedOrder.customer?.cpf && <p>CPF: {selectedOrder.customer.cpf}</p>}</div><div className="orderDetailBlock"><h3><MapPin/> Entrega</h3><p>{selectedOrder.customer?.street}, {selectedOrder.customer?.number}</p>{selectedOrder.customer?.complement && <p>{selectedOrder.customer.complement}</p>}<p>{selectedOrder.customer?.district}</p><p>{selectedOrder.customer?.city} · {selectedOrder.customer?.state}</p><p>CEP {selectedOrder.customer?.cep}</p></div></div><div className="orderDetailBlock paymentDetail"><h3><CreditCard/> Pagamento</h3><p><span>Forma</span><b>{selectedOrder.payment === "pix" ? "PIX" : "Cartão de crédito"}</b></p><p><span>Status</span><select className="statusSelect" value={selectedOrder.status} onChange={(e) => updateStatus(selectedOrder.id, e.target.value)}><option>Aguardando PIX</option><option>Confirmado</option><option>Em separação</option><option>Enviado</option><option>Entregue</option><option>Cancelado</option></select></p></div><div className="orderProducts"><h3>Itens do pedido</h3>{selectedOrder.items?.map((item) => <div key={item.id}><span>{item.qty}× {item.name}<small>{item.type} · {item.color}</small></span><b>{money(item.price * item.qty)}</b></div>)}<hr/><p><span>Subtotal</span><b>{money(selectedOrder.subtotal)}</b></p><p><span>Frete</span><b>{selectedOrder.shipping ? money(selectedOrder.shipping) : "Grátis"}</b></p>{selectedOrder.discount > 0 && <p className="discount"><span>Desconto</span><b>− {money(selectedOrder.discount)}</b></p>}<p className="orderGrandTotal"><span>Total</span><b>{money(selectedOrder.total)}</b></p></div></div></div>}</section>;
 }
 
-Admin = function AdminEditor({ contactInfo, setContactInfo }) {
+Admin = function AdminEditor({ contactInfo, setContactInfo, products, setProducts, slides, setSlides }) {
   const blank = {
     category: "grau",
     name: "",
@@ -832,7 +940,7 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
     tryOnImage: "",
   };
   const [items, setItems] = useState(() =>
-    frames.map((f, i) => ({ ...f, category: f.category || "grau", stock: f.stock ?? (i === 4 ? 3 : 12) })),
+    products.map((f, i) => ({ ...f, category: f.category || "grau", stock: f.stock ?? (i === 4 ? 3 : 12) })),
   );
   const [adminView, setAdminView] = useState("products");
   const [orders, setOrders] = useState(() => { try { return JSON.parse(localStorage.getItem("oticas-orders")) || []; } catch { return []; } });
@@ -845,6 +953,13 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
   const [error, setError] = useState("");
   const fileInput = useRef();
   const tryOnInput = useRef();
+  useEffect(() => {
+    if (adminView !== "orders") return;
+    authorizedAdminAction((token) => loadSharedOrders(token)).then((sharedOrders) => {
+      setOrders(sharedOrders);
+      localStorage.setItem("oticas-orders", JSON.stringify(sharedOrders));
+    }).catch((loadError) => setError(loadError.message));
+  }, [adminView]);
   const [formats, setFormats] = useState(() => {
     const defaults = [
       { name: "Redondo", shape: "round" },
@@ -860,10 +975,19 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
       return defaults;
     }
   });
+  useEffect(() => {
+    loadSharedStore().then((shared) => {
+      if (Array.isArray(shared.formats)) setFormats(shared.formats);
+    }).catch(() => {});
+  }, []);
+  async function persistGlobal(section, value) {
+    await authorizedAdminAction((token) => saveSharedSection(section, value, token));
+  }
   const shapes = Object.fromEntries(formats.map((item) => [item.name, item.shape]));
   function persistFormats(next) {
     setFormats(next);
     localStorage.setItem("oticas-formats", JSON.stringify(next));
+    persistGlobal("formats", next).catch((saveError) => setError(saveError.message));
   }
   function saveFormat(e) {
     e.preventDefault();
@@ -880,8 +1004,10 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
       const oldName = formats[editingFormat].name;
       const updatedItems = items.map((item) => item.type === oldName ? { ...item, type: name, shape: formatDraft.shape } : item);
       setItems(updatedItems);
+      setProducts(updatedItems);
       frames.splice(0, frames.length, ...updatedItems);
       localStorage.setItem("oticas-frames", JSON.stringify(updatedItems));
+      persistGlobal("products", updatedItems).catch((saveError) => setError(saveError.message));
     }
     persistFormats(next);
     setFormatDraft({ name: "", shape: "round" });
@@ -922,7 +1048,7 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
     setEditing(false);
     setError("");
   }
-  function choosePhoto(e) {
+  async function choosePhoto(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
@@ -933,25 +1059,21 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
       setError("A imagem deve ter no máximo 10 MB.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setForm((v) => ({
-        ...v,
-        image: reader.result,
-        tryOnImage: file.type === "image/png" && !v.tryOnImage ? reader.result : v.tryOnImage,
-      }));
+    try {
+      const uploaded = await authorizedAdminAction((token) => uploadSharedMedia(file, token));
+      setForm((v) => ({ ...v, image: uploaded.url, tryOnImage: file.type === "image/png" && !v.tryOnImage ? uploaded.url : v.tryOnImage }));
       setError("");
-    };
-    reader.readAsDataURL(file);
+    } catch (uploadError) { setError(uploadError.message); }
   }
-  function chooseTryOnPhoto(e) {
+  async function chooseTryOnPhoto(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.type !== "image/png") { setError("A imagem do provador deve ser um arquivo PNG com fundo transparente."); return; }
     if (file.size > 5 * 1024 * 1024) { setError("A imagem do provador deve ter no máximo 5 MB."); return; }
-    const reader = new FileReader();
-    reader.onload = () => { setForm((current) => ({ ...current, tryOnImage: reader.result })); setError(""); };
-    reader.readAsDataURL(file);
+    try {
+      const uploaded = await authorizedAdminAction((token) => uploadSharedMedia(file, token));
+      setForm((current) => ({ ...current, tryOnImage: uploaded.url })); setError("");
+    } catch (uploadError) { setError(uploadError.message); }
   }
   function save(e) {
     e.preventDefault();
@@ -974,8 +1096,10 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
         ? [product, ...items]
         : items.map((x) => (x.id === editing ? product : x));
     setItems(updated);
+    setProducts(updated);
     frames.splice(0, frames.length, ...updated);
     localStorage.setItem("oticas-frames", JSON.stringify(updated));
+    persistGlobal("products", updated).catch((saveError) => setError(saveError.message));
     close();
   }
   function removeProduct(product) {
@@ -983,8 +1107,10 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
     if (!confirmed) return;
     const updated = items.filter((item) => item.id !== product.id);
     setItems(updated);
+    setProducts(updated);
     frames.splice(0, frames.length, ...updated);
     localStorage.setItem("oticas-frames", JSON.stringify(updated));
+    persistGlobal("products", updated).catch((saveError) => setError(saveError.message));
   }
   const low = items.filter((x) => Number(x.stock) <= 3).length;
   const visibleItems = adminCategory === "todos" ? items : items.filter((item) => item.category === adminCategory);
@@ -1017,6 +1143,10 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
             <Globe />
             Contato e redes
           </button>
+          <button className={adminView === "highlights" ? "active" : ""} onClick={() => setAdminView("highlights")}>
+            <ImagePlus />
+            Destaques da Home
+          </button>
         </nav>
         <div className="adminUser">
           <span>EU</span>
@@ -1028,8 +1158,9 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
         </div>
       </aside>
       {adminView !== "products" && adminView !== "orders" && <AdminSection view={adminView} items={items} />}
-      {adminView === "orders" && <SalesManager orders={orders} setOrders={setOrders} />}
-      {adminView === "contacts" && <ContactSettings value={contactInfo} onSave={setContactInfo} />}
+      {adminView === "orders" && <SalesManager orders={orders} setOrders={setOrders} onStatusChange={(id, status) => authorizedAdminAction((token) => updateSharedOrderStatus(id, status, token))} />}
+      {adminView === "contacts" && <ContactSettings value={contactInfo} onSave={async (next) => { await persistGlobal("contact", next); setContactInfo(next); }} />}
+      {adminView === "highlights" && <HighlightsManager slides={slides} onSave={async (next) => { await persistGlobal("slides", next); setSlides(next); }} />}
       <section className={adminView === "products" ? "" : "adminSectionHidden"}>
         <header>
           <div>

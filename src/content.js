@@ -1,5 +1,26 @@
-// EDITE OS TEXTOS DO SITE NESTE ARQUIVO.
+// EDITE OS TEXTOS E CONTATOS PADRÃO DO SITE NESTE ARQUIVO.
 // A organização abaixo segue as telas e seções da aplicação.
+export const DEFAULT_CONTACT = {
+  instagram: "https://www.instagram.com/oticas.unidas1/",
+  facebook: "",
+  email: "oticasunidas@hotmail.com",
+  whatsapp: "+55 92 8523-5308",
+  phone: "",
+};
+
+export const DEFAULT_HOME_SLIDES = [
+  {
+    id: "welcome",
+    active: true,
+    image: "/hero-optica.png",
+    eyebrow: "ÓTICAS UNIDAS",
+    title: "Seu olhar merece destaque",
+    description: "Conheça nossas armações e encontre o modelo que combina com você.",
+    buttonLabel: "Ver coleção",
+    link: "catalog",
+  },
+];
+
 export const TEXTS = {
   brand: { name: "ÓTICAS", suffix: "UNIDAS" },
   header: {
@@ -50,6 +71,6 @@ export const TEXTS = {
     generateButton: "Gerar meu resultado",
   },
   cart: { label: "SUA ESCOLHA", title: "Minha sacola", emptyTitle: "Sua sacola está vazia", emptyDescription: "Que tal encontrar uma armação que seja a sua cara?", continueButton: "Continuar para entrega" },
-  footer: { slogan: "Seu olhar, sua identidade.", adminButton: "Área administrativa" },
+  footer: { slogan: "Sua visão em primeiro lugar.", adminButton: "Área administrativa" },
   admin: { productsTitle: "Produtos", productsDescription: "Gerencie armações de grau e óculos de sol.", newProduct: "Novo produto", manageModels: "Gerenciar Modelos" },
 };

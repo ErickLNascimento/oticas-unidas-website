@@ -9,6 +9,7 @@ import {
   QrCode,
   ShieldCheck,
 } from "lucide-react";
+import { createSharedOrder } from "./storeApi.js";
 import "./checkout.css";
 import "./cep-lookup.css";
 
@@ -98,7 +99,7 @@ export default function Checkout({ cart, setCart, setPage }) {
     setStep(step + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  function finish() {
+  async function finish() {
     if (
       payment === "card" &&
       ["cardName", "cardNumber", "expiry", "cvv"].some(
@@ -125,6 +126,11 @@ export default function Checkout({ cart, setCart, setPage }) {
       "oticas-orders",
       JSON.stringify([completed, ...existing]),
     );
+    try {
+      await createSharedOrder(completed);
+    } catch {
+      // Mantém uma cópia local quando a API ainda não estiver disponível.
+    }
     setOrder(completed);
     setCart([]);
     setStep(4);
