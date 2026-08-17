@@ -1,0 +1,14 @@
+.mercadoPagoBox { margin-top: 20px; }
+.sandboxBadge { background: #fff3cd; border: 1px solid #e4c86f; color: #705b17; padding: 9px 12px; margin-bottom: 14px; text-align: center; font-size: 9px; font-weight: 700; letter-spacing: .08em; }
+.mercadoPagoBox > small { display: block; text-align: center; color: #7d746c; margin-top: 10px; }
+.paymentLoading, .sandboxSetup { margin-top: 18px; padding: 22px; border: 1px solid #ded5cd; background: #faf8f5; text-align: center; }
+.sandboxSetup b { color: #99533f; }
+.sandboxSetup p { font-size: 11px; line-height: 1.6; margin-bottom: 0; }
+.sandboxSetup code { background: #eee8e2; padding: 2px 5px; }
+.pixResult { text-align: center; margin-top: 18px; }
+.pixResult > svg { width: 34px; }
+.pixResult img { display: block; width: 190px; height: 190px; margin: 14px auto; }
+.pixResult textarea { width: 100%; min-height: 70px; resize: none; border: 1px solid #ddd4cc; padding: 10px; font-size: 9px; }
+.pixResult button { border: 1px solid #99533f; background: white; color: #99533f; padding: 10px 14px; display: inline-flex; align-items: center; gap: 7px; }
+.pixResult button svg { width: 15px; }
+.pixBox img { width: 100px; height: 100px; }

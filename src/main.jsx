@@ -47,6 +47,7 @@ import "./photo-guidance-fix.css";
 import "./mediapipe-tryon.css";
 import "./tryon-image-consistency.css";
 import "./home-carousel.css";
+import "./about.css";
 import { DEFAULT_CONTACT, DEFAULT_HOME_SLIDES, TEXTS } from "./content.js";
 import Checkout from "./Checkout.jsx";
 import { detectGlassesPlacement } from "./faceLandmarker.js";
@@ -185,7 +186,7 @@ function Header({ page, setPage, cart }) {
           <button onClick={() => setPage("catalog")}>{TEXTS.header.menu.prescription}</button>
           <button onClick={() => setPage("sunglasses")}>{TEXTS.header.menu.sunglasses}</button>
           <button onClick={() => setPage("tryon")}>{TEXTS.header.menu.tryOn}</button>
-          <button>{TEXTS.header.menu.about}</button>
+          <button onClick={() => setPage("about")}>{TEXTS.header.menu.about}</button>
         </nav>
         <div className="tools">
           <Search />
@@ -224,12 +225,36 @@ function EditorialCarousel({ slides, setPage }) {
       const width = event.currentTarget.clientWidth;
       if (width) setActive(Math.round(event.currentTarget.scrollLeft / width));
     }}>
-      {enabled.map((slide) => <article className="editorialSlide" key={slide.id} style={{ backgroundImage: `linear-gradient(90deg, rgba(35,29,25,.82), rgba(35,29,25,.12)), url(${slide.image})` }}>
+      {enabled.map((slide) => <article className="editorialSlide" key={slide.id} style={{ backgroundImage: `linear-gradient(90deg, rgba(35,29,25,.82), rgba(35,29,25,.12)), url(${slide.image})`, backgroundSize: slide.imageFit || "cover", backgroundRepeat: "no-repeat" }}>
         <div><span className="eyebrow">{slide.eyebrow}</span><h2>{slide.title}</h2><p>{slide.description}</p>{slide.buttonLabel && <button className="primary" onClick={() => follow(slide.link)}>{slide.buttonLabel}<ArrowRight/></button>}</div>
       </article>)}
     </div>
     {enabled.length > 1 && <><button className="carouselPrevious" onClick={() => go(active - 1)} aria-label="Destaque anterior">‹</button><button className="carouselNext" onClick={() => go(active + 1)} aria-label="Próximo destaque">›</button><div className="carouselDots">{enabled.map((slide, index) => <button key={slide.id} className={index === active ? "active" : ""} onClick={() => go(index)} aria-label={`Abrir destaque ${index + 1}`} />)}</div></>}
   </section>;
+}
+
+function About() {
+  const about = TEXTS.about;
+  const [openPillar, setOpenPillar] = useState(null);
+  const pillar = (key, number, content) => {
+    const open = openPillar === key;
+    return <article className={`aboutPillar ${key} ${open ? "open" : ""}`}>
+      {!open ? <button className="pillarCover" style={{ backgroundImage: `linear-gradient(rgba(35,25,20,.2), rgba(35,25,20,.62)), url(${content.image})` }} onClick={() => setOpenPillar(key)} aria-expanded="false"><span>{content.title}</span><small>Clique para conhecer</small></button> : <div className="pillarContent"><span>{number}</span><h2>{content.title}</h2>{key === "values" ? <><div className="valueGrid">{content.items.map((value) => <div key={value}><Heart/><b>{value}</b></div>)}</div><p>{content.description}</p></> : <><h3>{content.highlight}</h3><p>{content.description}</p></>}<button className="pillarBack" onClick={() => setOpenPillar(null)}>Voltar</button></div>}
+    </article>;
+  };
+  return <main className="aboutPage">
+    <section className="aboutHero">
+      <span className="eyebrow">{about.label}</span>
+      <h1>{about.title}<br/><i>{about.titleHighlight}</i></h1>
+      <p>{about.introduction}</p>
+    </section>
+    <section className="aboutPillars">
+      {pillar("mission", "01", about.mission)}
+      {pillar("vision", "02", about.vision)}
+      {pillar("values", "03", about.values)}
+    </section>
+    <section className="aboutSignature"><BrandLogo/><div><span className="eyebrow">ÓTICAS UNIDAS</span><h2>Sua visão em primeiro lugar.</h2><p>Atendimento próximo, escolhas cuidadosas e confiança para toda a família.</p></div></section>
+  </main>;
 }
 
 function Home({ setPage, addCart, products, slides }) {
@@ -799,13 +824,16 @@ function App() {
   const [products, setProducts] = useState(frames);
   const [slides, setSlides] = useState(DEFAULT_HOME_SLIDES);
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [page]);
+  useEffect(() => {
     loadSharedStore().then((shared) => {
       if (Array.isArray(shared.products)) {
         setProducts(shared.products);
         frames.splice(0, frames.length, ...shared.products);
       }
       if (shared.contact) setContactInfo({ ...defaultContact, ...shared.contact });
-      if (Array.isArray(shared.slides)) setSlides(shared.slides);
+      if (Array.isArray(shared.slides)) setSlides(shared.slides.map((slide) => ({ ...slide, imageFit: slide.imageFit || (slide.image === "/hero-optica.png" ? "cover" : "contain") })));
     }).catch(() => {});
   }, []);
   function addCart(f) {
@@ -826,6 +854,7 @@ function App() {
         <Catalog category="sol" setPage={setPage} addCart={addCart} products={products} />
       )}
       {page === "tryon" && <TryOn setPage={setPage} products={products} />}{" "}
+      {page === "about" && <About />}{" "}
       {page === "cart" && (
         <Cart cart={cart} setCart={setCart} setPage={setPage} />
       )}
@@ -884,13 +913,33 @@ async function authorizedAdminAction(action) {
 }
 
 function HighlightsManager({ slides, onSave }) {
-  const blank = { id: "", active: true, image: "/hero-optica.png", eyebrow: "DESTAQUE", title: "", description: "", buttonLabel: "Saiba mais", link: "catalog" };
+  const blank = { id: "", active: true, image: "/hero-optica.png", imageFit: "contain", eyebrow: "DESTAQUE", title: "", description: "", buttonLabel: "Saiba mais", link: "catalog" };
   const [editingSlide, setEditingSlide] = useState(null);
   const [draft, setDraft] = useState(blank);
   const [error, setError] = useState("");
-  const field = (key, label, placeholder) => <label>{label}<input value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} placeholder={placeholder} /></label>;
-  function edit(slide) { setEditingSlide(slide.id); setDraft({ ...slide }); setError(""); }
+  const [uploading, setUploading] = useState(false);
+  const imageInput = useRef();
+  useEffect(() => {
+    const preview = document.querySelector(".highlightLivePreview");
+    if (preview) preview.style.backgroundSize = draft.imageFit || "contain";
+  }, [draft.imageFit, editingSlide]);
+  const field = (key, label, placeholder) => <React.Fragment><label>{label}<input value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} placeholder={placeholder} /></label>{key === "link" && <label className="imageFitField">Enquadramento<select value={draft.imageFit || "contain"} onChange={(event) => setDraft({ ...draft, imageFit: event.target.value })}><option value="contain">Mostrar imagem inteira</option><option value="cover">Cobrir todo o espaço</option></select></label>}</React.Fragment>;
+  function edit(slide) { setEditingSlide(slide.id); setDraft({ imageFit: "contain", ...slide }); setError(""); }
   function add() { setEditingSlide("new"); setDraft(blank); setError(""); }
+  async function chooseImage(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setError("Escolha um arquivo de imagem."); return; }
+    if (file.size > 10 * 1024 * 1024) { setError("A imagem deve ter no máximo 10 MB."); return; }
+    setUploading(true);
+    setError("");
+    try {
+      const uploaded = await authorizedAdminAction((token) => uploadSharedMedia(file, token));
+      setDraft((current) => ({ ...current, image: uploaded.url }));
+    } catch (uploadError) { setError(uploadError.message); }
+    finally { setUploading(false); }
+  }
   async function submit(event) {
     event.preventDefault();
     if (!draft.title.trim() || !draft.image.trim()) { setError("Informe o título e a URL da imagem."); return; }
@@ -908,7 +957,7 @@ function HighlightsManager({ slides, onSave }) {
     const next = [...slides]; [next[index], next[target]] = [next[target], next[index]];
     try { await onSave(next); } catch (saveError) { setError(saveError.message); }
   }
-  return <section className="adminSecondary highlightsManager"><header><div><span className="eyebrow">CONTEÚDO DA HOME</span><h1>Destaques da Home</h1><p>Gerencie o carrossel editorial exibido para todos os clientes.</p></div><button className="primary" onClick={add}><Plus/> Novo destaque</button></header>{error && <p className="formError">{error}</p>}{slides.length ? <div className="highlightGrid">{slides.map((slide, index) => <article className="highlightCard" key={slide.id}><img src={slide.image} alt=""/><div><h3>{slide.title}</h3><p>{slide.active === false ? "Oculto" : "Visível"} · {slide.buttonLabel || "Sem botão"}</p></div><div className="highlightActions"><button onClick={() => move(index, -1)} disabled={!index}>↑</button><button onClick={() => move(index, 1)} disabled={index === slides.length - 1}>↓</button><button className="editButton" onClick={() => edit(slide)}><Edit3/> Editar</button><button className="deleteButton" onClick={() => remove(slide.id)}><Trash2/> Remover</button></div></article>)}</div> : <div className="emptyHighlights"><h2>Nenhum destaque cadastrado</h2><p>Adicione o primeiro conteúdo do carrossel da Home.</p></div>}{editingSlide && <div className="overlay"><form className="modal highlightForm" onSubmit={submit}><button type="button" className="close" onClick={() => setEditingSlide(null)}><X/></button><span className="eyebrow">CARROSSEL EDITORIAL</span><h2>{editingSlide === "new" ? "Novo destaque" : "Editar destaque"}</h2>{field("image", "URL da imagem", "https://... ou /hero-optica.png")}<div className="row">{field("eyebrow", "Chamada curta", "NOVIDADE")}{field("title", "Título", "Uma novidade para o seu olhar")}</div><label>Descrição<textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label><div className="row">{field("buttonLabel", "Texto do botão", "Saiba mais")}{field("link", "Destino", "catalog, tryon ou https://...")}</div><label className="highlightToggle"><input type="checkbox" checked={draft.active !== false} onChange={(event) => setDraft({ ...draft, active: event.target.checked })}/> Exibir este destaque</label>{error && <p className="formError">{error}</p>}<div className="modalActions"><button type="button" className="cancel" onClick={() => setEditingSlide(null)}>Cancelar</button><button className="primary" type="submit">Salvar destaque</button></div></form></div>}</section>;
+  return <section className="adminSecondary highlightsManager"><header><div><span className="eyebrow">CONTEÚDO DA HOME</span><h1>Destaques da Home</h1><p>Gerencie o carrossel editorial exibido para todos os clientes.</p></div><button className="primary" onClick={add}><Plus/> Novo destaque</button></header>{error && <p className="formError">{error}</p>}{slides.length ? <div className="highlightGrid">{slides.map((slide, index) => <article className="highlightCard" key={slide.id}><img src={slide.image} alt=""/><div><h3>{slide.title}</h3><p>{slide.active === false ? "Oculto" : "Visível"} · {slide.buttonLabel || "Sem botão"}</p></div><div className="highlightActions"><button onClick={() => move(index, -1)} disabled={!index}>↑</button><button onClick={() => move(index, 1)} disabled={index === slides.length - 1}>↓</button><button className="editButton" onClick={() => edit(slide)}><Edit3/> Editar</button><button className="deleteButton" onClick={() => remove(slide.id)}><Trash2/> Remover</button></div></article>)}</div> : <div className="emptyHighlights"><h2>Nenhum destaque cadastrado</h2><p>Adicione o primeiro conteúdo do carrossel da Home.</p></div>}{editingSlide && <div className="overlay"><form className="modal highlightForm" onSubmit={submit}><button type="button" className="close" onClick={() => setEditingSlide(null)}><X/></button><span className="eyebrow">CARROSSEL EDITORIAL</span><h2>{editingSlide === "new" ? "Novo destaque" : "Editar destaque"}</h2><div className="highlightImagePicker"><input ref={imageInput} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={chooseImage}/>{draft.image && <img src={draft.image} alt="Prévia do destaque"/>}<div>{field("image", "URL da imagem", "https://... ou /hero-optica.png")}<button type="button" className="manageFormats" onClick={() => imageInput.current?.click()} disabled={uploading}><ImagePlus/> {uploading ? "Enviando imagem..." : "Escolher imagem"}</button><small>PNG, JPG ou WEBP · máximo 10 MB</small></div></div><div className="row">{field("eyebrow", "Chamada curta", "NOVIDADE")}{field("title", "Título", "Uma novidade para o seu olhar")}</div><label>Descrição<textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label><div className="row">{field("buttonLabel", "Texto do botão", "Saiba mais")}{field("link", "Destino", "catalog, tryon ou https://...")}</div><div className="highlightPreviewBlock"><span>PRÉVIA NA HOME</span><div className="highlightLivePreview" style={{ backgroundImage: `linear-gradient(90deg, rgba(35,29,25,.82), rgba(35,29,25,.12)), url(${draft.image || "/hero-optica.png"})` }}><div><small>{draft.eyebrow || "DESTAQUE"}</small><h3>{draft.title || "Título do destaque"}</h3><p>{draft.description || "A descrição aparecerá aqui."}</p>{draft.buttonLabel && <b>{draft.buttonLabel}<ArrowRight/></b>}</div></div></div><label className="highlightToggle"><input type="checkbox" checked={draft.active !== false} onChange={(event) => setDraft({ ...draft, active: event.target.checked })}/> Exibir este destaque</label>{error && <p className="formError">{error}</p>}<div className="modalActions"><button type="button" className="cancel" onClick={() => setEditingSlide(null)}>Cancelar</button><button className="primary" type="submit" disabled={uploading}>Salvar destaque</button></div></form></div>}</section>;
 }
 
 function SalesManager({ orders, setOrders, onStatusChange }) {

@@ -13,6 +13,7 @@ export const DEFAULT_HOME_SLIDES = [
     id: "welcome",
     active: true,
     image: "/hero-optica.png",
+    imageFit: "cover",
     eyebrow: "ÓTICAS UNIDAS",
     title: "Seu olhar merece destaque",
     description: "Conheça nossas armações e encontre o modelo que combina com você.",
@@ -56,6 +57,30 @@ export const TEXTS = {
     searchPlaceholder: "Buscar armação...",
     sort: "Ordenar por",
     addToBag: "Adicionar à sacola",
+  },
+  about: {
+    label: "QUEM SOMOS",
+    title: "Cuidado com o seu olhar,",
+    titleHighlight: "respeito por cada história.",
+    introduction: "Na Óticas Unidas, acreditamos que enxergar bem transforma a forma como vivemos. Por isso, unimos qualidade, atendimento próximo e soluções acessíveis para cuidar de cada cliente.",
+    mission: {
+      title: "Missão",
+      image: "/missao.png",
+      highlight: "Cuidar da visão com excelência e humanidade.",
+      description: "Oferecer soluções ópticas de qualidade, com atendimento personalizado, acolhedor e acessível, ajudando cada cliente a enxergar melhor e viver com mais confiança.",
+    },
+    vision: {
+      title: "Visão",
+      image: "/visao.png",
+      highlight: "Ser referência em cuidado visual e atendimento humanizado.",
+      description: "Ser reconhecida pela confiança, qualidade e experiência oferecida aos nossos clientes, tornando as Óticas Unidas uma marca cada vez mais presente na vida das famílias.",
+    },
+    values: {
+      title: "Valores",
+      image: "/valores.png",
+      items: ["Cuidado", "Respeito", "Confiança", "Qualidade", "Ética", "Acolhimento"],
+      description: "Valorizamos cada pessoa e acreditamos que um bom atendimento começa pela escuta. Trabalhamos com transparência, responsabilidade e dedicação para oferecer uma experiência que faça cada cliente se sentir único e bem cuidado.",
+    },
   },
   tryOn: {
     label: "PROVADOR VIRTUAL",
