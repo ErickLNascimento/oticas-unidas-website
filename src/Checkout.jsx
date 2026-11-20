@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import "./checkout.css";
 import "./cep-lookup.css";
-import { placeOrder } from "./store.js";
 
 const money = (value) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
@@ -99,9 +98,7 @@ export default function Checkout({ cart, setCart, setPage }) {
     setStep(step + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  const [submitting, setSubmitting] = useState(false);
-  async function finish() {
-    if (submitting) return;
+  function finish() {
     if (
       payment === "card" &&
       ["cardName", "cardNumber", "expiry", "cvv"].some(
@@ -111,17 +108,23 @@ export default function Checkout({ cart, setCart, setPage }) {
       setError("Preencha os dados do cartão.");
       return;
     }
-    setError("");
-    setSubmitting(true);
-    let completed;
-    try {
-      completed = await placeOrder({ customer: form, cart, payment });
-    } catch (err) {
-      setError(err.message);
-      return;
-    } finally {
-      setSubmitting(false);
-    }
+    const completed = {
+      id: `OU-${Date.now().toString().slice(-6)}`,
+      date: new Date().toISOString(),
+      customer: form,
+      items: cart,
+      payment,
+      subtotal,
+      shipping,
+      discount,
+      total,
+      status: payment === "pix" ? "Aguardando PIX" : "Confirmado",
+    };
+    const existing = JSON.parse(localStorage.getItem("oticas-orders") || "[]");
+    localStorage.setItem(
+      "oticas-orders",
+      JSON.stringify([completed, ...existing]),
+    );
     setOrder(completed);
     setCart([]);
     setStep(4);
@@ -396,7 +399,6 @@ export default function Checkout({ cart, setCart, setPage }) {
           <button
             className="primary checkoutContinue"
             onClick={step < 3 ? next : finish}
-            disabled={submitting}
           >
             {step < 3 ? (
               <>
