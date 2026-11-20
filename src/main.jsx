@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Search,
@@ -46,8 +46,10 @@ import "./photo-guidance.css";
 import "./photo-guidance-fix.css";
 import "./mediapipe-tryon.css";
 import "./tryon-image-consistency.css";
+import "./admin-login.css";
 import { TEXTS } from "./content.js";
 import Checkout from "./Checkout.jsx";
+import * as store from "./store.js";
 
 const defaultFrames = [
   {
@@ -111,14 +113,17 @@ const defaultFrames = [
     tone: "#5f6450",
   },
 ];
-const frames = (() => {
-  try {
-    return JSON.parse(localStorage.getItem("oticas-frames")) || defaultFrames;
-  } catch {
-    return defaultFrames;
-  }
-})();
+const frames = [...defaultFrames];
 const defaultContact = { instagram: "", facebook: "", email: "contato@oticasunidas.com.br", whatsapp: "", phone: "" };
+const defaultFormats = [
+  { name: "Redondo", shape: "round" },
+  { name: "Gatinho", shape: "cat" },
+  { name: "Retangular", shape: "rect" },
+  { name: "Aviador", shape: "aviator" },
+  { name: "Oval", shape: "oval" },
+  { name: "Quadrado", shape: "square" },
+];
+const initial = { formats: defaultFormats, contact: defaultContact };
 
 function Glasses({ shape = "round", tone = "#222", large = false, category = "grau" }) {
   return (
@@ -744,7 +749,7 @@ function Admin() {
 function App() {
   const [page, setPage] = useState("home");
   const [cart, setCart] = useState([]);
-  const [contactInfo, setContactInfo] = useState(() => { try { return JSON.parse(localStorage.getItem("oticas-contact")) || defaultContact; } catch { return defaultContact; } });
+  const [contactInfo, setContactInfo] = useState(initial.contact);
   function addCart(f) {
     setCart((c) => {
       const old = c.find((x) => x.id === f.id);
@@ -753,7 +758,7 @@ function App() {
         : [...c, { ...f, qty: 1 }];
     });
   }
-  if (page === "admin") return <Admin contactInfo={contactInfo} setContactInfo={setContactInfo} />;
+  if (page === "admin") return <AdminGate><Admin contactInfo={contactInfo} setContactInfo={setContactInfo} /></AdminGate>;
   return (
     <>
       <Header page={page} setPage={setPage} cart={cart} />
@@ -784,22 +789,68 @@ function App() {
   );
 }
 
-function AdminSection({ view, items }) {
+function AdminSection({ view, items, orders = [] }) {
   const content = {
     overview: { eyebrow: "PAINEL", title: "Visão geral", description: "Acompanhe os principais números da sua ótica." },
-    orders: { eyebrow: "VENDAS", title: "Pedidos", description: "Acompanhe os pedidos realizados na loja." },
-    customers: { eyebrow: "RELACIONAMENTO", title: "Clientes", description: "Consulte sua base de clientes." },
+    customers: { eyebrow: "RELACIONAMENTO", title: "Clientes", description: "Clientes que já fizeram pedidos na loja." },
   }[view];
   if (!content) return null;
-  return <section className="adminSecondary"><header><div><span className="eyebrow">{content.eyebrow}</span><h1>{content.title}</h1><p>{content.description}</p></div></header>{view === "overview" && <><div className="stats"><div><small>Produtos cadastrados</small><b>{items.length}</b><span>Catálogo completo</span></div><div><small>Unidades em estoque</small><b>{items.reduce((total,item)=>total+Number(item.stock||0),0)}</b><span className="green">Disponíveis para venda</span></div><div><small>Pedidos recentes</small><b>8</b><span>Últimos 30 dias</span></div></div><div className="adminWelcome"><LayoutGrid/><h2>Bem-vindo ao painel</h2><p>Use o menu lateral para gerenciar produtos, acompanhar pedidos e consultar clientes.</p></div></>}{view === "orders" && <div className="tableBox simpleAdminTable"><table><thead><tr><th>PEDIDO</th><th>CLIENTE</th><th>DATA</th><th>TOTAL</th><th>STATUS</th></tr></thead><tbody><tr><td>#OU-1008</td><td>Mariana Silva</td><td>Hoje, 10:32</td><td>R$ 429,00</td><td><span className="published">Confirmado</span></td></tr><tr><td>#OU-1007</td><td>Lucas Almeida</td><td>Ontem, 16:18</td><td>R$ 389,00</td><td><span className="low">Em separação</span></td></tr></tbody></table></div>}{view === "customers" && <div className="tableBox simpleAdminTable"><table><thead><tr><th>CLIENTE</th><th>E-MAIL</th><th>PEDIDOS</th><th>ÚLTIMA COMPRA</th></tr></thead><tbody><tr><td>Mariana Silva</td><td>mariana@email.com</td><td>3</td><td>Hoje</td></tr><tr><td>Lucas Almeida</td><td>lucas@email.com</td><td>1</td><td>Ontem</td></tr></tbody></table></div>}</section>;
+  const when = (iso) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
+  const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const recent = orders.filter((order) => new Date(order.date).getTime() >= monthAgo).length;
+  const customers = Object.values(orders.reduce((all, order) => {
+    const email = (order.customer?.email || "").toLowerCase();
+    if (!email) return all;
+    const current = all[email] || { name: order.customer.name, email, count: 0, last: order.date };
+    current.count += 1;
+    if (new Date(order.date) > new Date(current.last)) current.last = order.date;
+    all[email] = current;
+    return all;
+  }, {})).sort((a, b) => new Date(b.last) - new Date(a.last));
+  return <section className="adminSecondary"><header><div><span className="eyebrow">{content.eyebrow}</span><h1>{content.title}</h1><p>{content.description}</p></div></header>{view === "overview" && <><div className="stats"><div><small>Produtos cadastrados</small><b>{items.length}</b><span>Catálogo completo</span></div><div><small>Unidades em estoque</small><b>{items.reduce((total,item)=>total+Number(item.stock||0),0)}</b><span className="green">Disponíveis para venda</span></div><div><small>Pedidos recentes</small><b>{recent}</b><span>Últimos 30 dias</span></div></div><div className="adminWelcome"><LayoutGrid/><h2>Bem-vindo ao painel</h2><p>Use o menu lateral para gerenciar produtos, acompanhar pedidos e consultar clientes.</p></div></>}{view === "customers" && (customers.length ? <div className="tableBox simpleAdminTable"><table><thead><tr><th>CLIENTE</th><th>E-MAIL</th><th>PEDIDOS</th><th>ÚLTIMA COMPRA</th></tr></thead><tbody>{customers.map((c) => <tr key={c.email}><td>{c.name}</td><td>{c.email}</td><td>{c.count}</td><td>{when(c.last)}</td></tr>)}</tbody></table></div> : <div className="tableBox"><div className="noOrders"><User/><h2>Nenhum cliente ainda</h2><p>Os clientes aparecem aqui depois do primeiro pedido.</p></div></div>)}</section>;
+}
+
+function AdminGate({ children }) {
+  const [state, setState] = useState({ loading: true });
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => { store.getAdminSession().then((s) => setState(s)).catch(() => setState({ ok: false })); }, []);
+  async function submit(e) {
+    e.preventDefault();
+    setError("");
+    try {
+      const s = await store.signIn(email.trim(), password);
+      if (!s.ok) setError("Esta conta não tem acesso ao painel.");
+      setState(s);
+    } catch (err) { setError(err.message); }
+  }
+  if (state.loading) return <main className="adminLogin"><p>Carregando...</p></main>;
+  if (state.ok) return React.cloneElement(children, { adminEmail: state.email });
+  return (
+    <main className="adminLogin">
+      <form onSubmit={submit}>
+        <BrandLogo />
+        <span className="eyebrow">ÁREA ADMINISTRATIVA</span>
+        <h1>Entrar no painel</h1>
+        {state.notAdmin && !error && <p className="formError">Esta conta não tem acesso ao painel.</p>}
+        <label>E-mail<input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+        <label>Senha<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+        {error && <p className="formError">{error}</p>}
+        <button className="primary full" type="submit">Entrar</button>
+        <button type="button" className="link" onClick={() => window.location.reload()}>Voltar para a loja</button>
+      </form>
+    </main>
+  );
 }
 
 function ContactSettings({ value, onSave }) {
   const [draft, setDraft] = useState(value);
   const [saved, setSaved] = useState(false);
-  function submit(e) { e.preventDefault(); onSave(draft); localStorage.setItem("oticas-contact", JSON.stringify(draft)); setSaved(true); setTimeout(() => setSaved(false), 2200); }
+  const [saveError, setSaveError] = useState("");
+  async function submit(e) { e.preventDefault(); setSaveError(""); try { await store.saveContact(draft); onSave(draft); setSaved(true); setTimeout(() => setSaved(false), 2200); } catch { setSaveError("Não foi possível salvar. Tente novamente."); } }
   const field = (key, label, placeholder, type = "text") => <label>{label}<input type={type} value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} placeholder={placeholder} /></label>;
-  return <section className="adminSecondary contactSettings"><header><div><span className="eyebrow">CONFIGURAÇÕES</span><h1>Contato e redes</h1><p>Altere os dados exibidos no rodapé da loja.</p></div></header><form className="contactForm" onSubmit={submit}><div className="contactFormTitle"><Globe/><div><h2>Redes sociais e atendimento</h2><p>Deixe em branco os canais que não deseja exibir.</p></div></div>{field("instagram", "Instagram", "https://instagram.com/suaotica", "url")}{field("facebook", "Facebook", "https://facebook.com/suaotica", "url")}<div className="row">{field("email", "E-mail", "contato@suaotica.com", "email")}{field("whatsapp", "WhatsApp com DDD", "5592999999999")}</div>{field("phone", "Telefone", "(92) 3333-3333")}<button className="primary" type="submit">{saved ? <><Check/> Alterações salvas</> : "Salvar contatos"}</button></form></section>;
+  return <section className="adminSecondary contactSettings"><header><div><span className="eyebrow">CONFIGURAÇÕES</span><h1>Contato e redes</h1><p>Altere os dados exibidos no rodapé da loja.</p></div></header><form className="contactForm" onSubmit={submit}><div className="contactFormTitle"><Globe/><div><h2>Redes sociais e atendimento</h2><p>Deixe em branco os canais que não deseja exibir.</p></div></div>{field("instagram", "Instagram", "https://instagram.com/suaotica", "url")}{field("facebook", "Facebook", "https://facebook.com/suaotica", "url")}<div className="row">{field("email", "E-mail", "contato@suaotica.com", "email")}{field("whatsapp", "WhatsApp com DDD", "5592999999999")}</div>{field("phone", "Telefone", "(92) 3333-3333")}<button className="primary" type="submit">{saved ? <><Check/> Alterações salvas</> : "Salvar contatos"}</button>{saveError && <p className="formError">{saveError}</p>}</form></section>;
 }
 
 function SalesManager({ orders, setOrders }) {
@@ -808,15 +859,18 @@ function SalesManager({ orders, setOrders }) {
   const money = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0);
   const filtered = orders.filter((order) => `${order.id} ${order.customer?.name} ${order.customer?.email}`.toLowerCase().includes(search.toLowerCase()));
   const revenue = orders.reduce((total, order) => total + Number(order.total || 0), 0);
-  function updateStatus(orderId, status) {
+  async function updateStatus(orderId, status) {
+    const previous = orders;
     const updated = orders.map((order) => order.id === orderId ? { ...order, status } : order);
-    setOrders(updated); localStorage.setItem("oticas-orders", JSON.stringify(updated));
+    setOrders(updated);
     setSelectedOrder((current) => current?.id === orderId ? { ...current, status } : current);
+    try { await store.updateOrderStatus(updated, orderId, status); }
+    catch { setOrders(previous); alert("Não foi possível atualizar o status. Tente novamente."); }
   }
-  return <section className="adminSecondary salesManager"><header><div><span className="eyebrow">VENDAS</span><h1>Pedidos</h1><p>Gerencie pagamentos, clientes e entregas.</p></div></header><div className="stats"><div><small>Total vendido</small><b>{money(revenue)}</b><span>Todos os pedidos</span></div><div><small>Pedidos recebidos</small><b>{orders.length}</b><span className="green">Registrados no checkout</span></div><div><small>Aguardando pagamento</small><b>{orders.filter((order) => order.status?.includes("Aguardando")).length}</b><span className="red">Requer atenção</span></div></div><div className="tableBox"><div className="tableTools"><div className="search"><Search/><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar pedido ou cliente..."/></div></div>{filtered.length ? <table><thead><tr><th>PEDIDO</th><th>CLIENTE</th><th>PAGAMENTO</th><th>TOTAL</th><th>STATUS</th><th>AÇÕES</th></tr></thead><tbody>{filtered.map((order) => <tr key={order.id}><td>#{order.id}</td><td><span><b>{order.customer?.name}</b><small>{order.customer?.email}</small></span></td><td>{order.payment === "pix" ? "PIX" : "Cartão"}</td><td>{money(order.total)}</td><td><select className="statusSelect" value={order.status} onChange={(e) => updateStatus(order.id, e.target.value)}><option>Aguardando PIX</option><option>Confirmado</option><option>Em separação</option><option>Enviado</option><option>Entregue</option><option>Cancelado</option></select></td><td><button className="editButton" onClick={() => setSelectedOrder(order)}><Eye/> Ver detalhes</button></td></tr>)}</tbody></table> : <div className="noOrders"><ShoppingBag/><h2>Nenhum pedido encontrado</h2><p>As vendas concluídas no checkout aparecerão aqui.</p></div>}</div>{selectedOrder && <div className="overlay"><div className="modal orderModal"><button className="close" onClick={() => setSelectedOrder(null)}><X/></button><span className="eyebrow">PEDIDO #{selectedOrder.id}</span><h2>Detalhes da venda</h2><div className="orderDetailGrid"><div className="orderDetailBlock"><h3><User/> Cliente</h3><p><b>{selectedOrder.customer?.name}</b></p><p>{selectedOrder.customer?.email}</p><p>{selectedOrder.customer?.phone}</p>{selectedOrder.customer?.cpf && <p>CPF: {selectedOrder.customer.cpf}</p>}</div><div className="orderDetailBlock"><h3><MapPin/> Entrega</h3><p>{selectedOrder.customer?.street}, {selectedOrder.customer?.number}</p>{selectedOrder.customer?.complement && <p>{selectedOrder.customer.complement}</p>}<p>{selectedOrder.customer?.district}</p><p>{selectedOrder.customer?.city} · {selectedOrder.customer?.state}</p><p>CEP {selectedOrder.customer?.cep}</p></div></div><div className="orderDetailBlock paymentDetail"><h3><CreditCard/> Pagamento</h3><p><span>Forma</span><b>{selectedOrder.payment === "pix" ? "PIX" : "Cartão de crédito"}</b></p><p><span>Status</span><select className="statusSelect" value={selectedOrder.status} onChange={(e) => updateStatus(selectedOrder.id, e.target.value)}><option>Aguardando PIX</option><option>Confirmado</option><option>Em separação</option><option>Enviado</option><option>Entregue</option><option>Cancelado</option></select></p></div><div className="orderProducts"><h3>Itens do pedido</h3>{selectedOrder.items?.map((item) => <div key={item.id}><span>{item.qty}× {item.name}<small>{item.type} · {item.color}</small></span><b>{money(item.price * item.qty)}</b></div>)}<hr/><p><span>Subtotal</span><b>{money(selectedOrder.subtotal)}</b></p><p><span>Frete</span><b>{selectedOrder.shipping ? money(selectedOrder.shipping) : "Grátis"}</b></p>{selectedOrder.discount > 0 && <p className="discount"><span>Desconto</span><b>− {money(selectedOrder.discount)}</b></p>}<p className="orderGrandTotal"><span>Total</span><b>{money(selectedOrder.total)}</b></p></div></div></div>}</section>;
+  return <section className="adminSecondary salesManager"><header><div><span className="eyebrow">VENDAS</span><h1>Pedidos</h1><p>Gerencie pagamentos, clientes e entregas.</p></div></header><div className="stats"><div><small>Total vendido</small><b>{money(revenue)}</b><span>Todos os pedidos</span></div><div><small>Pedidos recebidos</small><b>{orders.length}</b><span className="green">Registrados no checkout</span></div><div><small>Aguardando pagamento</small><b>{orders.filter((order) => order.status?.includes("Aguardando")).length}</b><span className="red">Requer atenção</span></div></div><div className="tableBox"><div className="tableTools"><div className="search"><Search/><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar pedido ou cliente..."/></div></div>{filtered.length ? <table><thead><tr><th>PEDIDO</th><th>CLIENTE</th><th>PAGAMENTO</th><th>TOTAL</th><th>STATUS</th><th>AÇÕES</th></tr></thead><tbody>{filtered.map((order) => <tr key={order.id}><td>#{order.id}</td><td><span><b>{order.customer?.name}</b><small>{order.customer?.email}</small></span></td><td>{order.payment === "pix" ? "PIX" : "Cartão"}</td><td>{money(order.total)}</td><td><select className="statusSelect" value={order.status} onChange={(e) => updateStatus(order.id, e.target.value)}><option>Aguardando PIX</option><option>Aguardando pagamento</option><option>Confirmado</option><option>Em separação</option><option>Enviado</option><option>Entregue</option><option>Cancelado</option></select></td><td><button className="editButton" onClick={() => setSelectedOrder(order)}><Eye/> Ver detalhes</button></td></tr>)}</tbody></table> : <div className="noOrders"><ShoppingBag/><h2>Nenhum pedido encontrado</h2><p>As vendas concluídas no checkout aparecerão aqui.</p></div>}</div>{selectedOrder && <div className="overlay"><div className="modal orderModal"><button className="close" onClick={() => setSelectedOrder(null)}><X/></button><span className="eyebrow">PEDIDO #{selectedOrder.id}</span><h2>Detalhes da venda</h2><div className="orderDetailGrid"><div className="orderDetailBlock"><h3><User/> Cliente</h3><p><b>{selectedOrder.customer?.name}</b></p><p>{selectedOrder.customer?.email}</p><p>{selectedOrder.customer?.phone}</p>{selectedOrder.customer?.cpf && <p>CPF: {selectedOrder.customer.cpf}</p>}</div><div className="orderDetailBlock"><h3><MapPin/> Entrega</h3><p>{selectedOrder.customer?.street}, {selectedOrder.customer?.number}</p>{selectedOrder.customer?.complement && <p>{selectedOrder.customer.complement}</p>}<p>{selectedOrder.customer?.district}</p><p>{selectedOrder.customer?.city} · {selectedOrder.customer?.state}</p><p>CEP {selectedOrder.customer?.cep}</p></div></div><div className="orderDetailBlock paymentDetail"><h3><CreditCard/> Pagamento</h3><p><span>Forma</span><b>{selectedOrder.payment === "pix" ? "PIX" : "Cartão de crédito"}</b></p><p><span>Status</span><select className="statusSelect" value={selectedOrder.status} onChange={(e) => updateStatus(selectedOrder.id, e.target.value)}><option>Aguardando PIX</option><option>Aguardando pagamento</option><option>Confirmado</option><option>Em separação</option><option>Enviado</option><option>Entregue</option><option>Cancelado</option></select></p></div><div className="orderProducts"><h3>Itens do pedido</h3>{selectedOrder.items?.map((item) => <div key={item.id}><span>{item.qty}× {item.name}<small>{item.type} · {item.color}</small></span><b>{money(item.price * item.qty)}</b></div>)}<hr/><p><span>Subtotal</span><b>{money(selectedOrder.subtotal)}</b></p><p><span>Frete</span><b>{selectedOrder.shipping ? money(selectedOrder.shipping) : "Grátis"}</b></p>{selectedOrder.discount > 0 && <p className="discount"><span>Desconto</span><b>− {money(selectedOrder.discount)}</b></p>}<p className="orderGrandTotal"><span>Total</span><b>{money(selectedOrder.total)}</b></p></div></div></div>}</section>;
 }
 
-Admin = function AdminEditor({ contactInfo, setContactInfo }) {
+Admin = function AdminEditor({ contactInfo, setContactInfo, adminEmail }) {
   const blank = {
     category: "grau",
     name: "",
@@ -834,7 +888,8 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
     frames.map((f, i) => ({ ...f, category: f.category || "grau", stock: f.stock ?? (i === 4 ? 3 : 12) })),
   );
   const [adminView, setAdminView] = useState("products");
-  const [orders, setOrders] = useState(() => { try { return JSON.parse(localStorage.getItem("oticas-orders")) || []; } catch { return []; } });
+  const [orders, setOrders] = useState([]);
+  useEffect(() => { store.listOrders().then(setOrders).catch(() => setError("Não foi possível carregar os pedidos.")); }, []);
   const [adminCategory, setAdminCategory] = useState("todos");
   const [editing, setEditing] = useState(false);
   const [formatModal, setFormatModal] = useState(false);
@@ -844,27 +899,14 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
   const [error, setError] = useState("");
   const fileInput = useRef();
   const tryOnInput = useRef();
-  const [formats, setFormats] = useState(() => {
-    const defaults = [
-      { name: "Redondo", shape: "round" },
-      { name: "Gatinho", shape: "cat" },
-      { name: "Retangular", shape: "rect" },
-      { name: "Aviador", shape: "aviator" },
-      { name: "Oval", shape: "oval" },
-      { name: "Quadrado", shape: "square" },
-    ];
-    try {
-      return JSON.parse(localStorage.getItem("oticas-formats")) || defaults;
-    } catch {
-      return defaults;
-    }
-  });
+  const [formats, setFormats] = useState(initial.formats);
+  const [saving, setSaving] = useState(false);
   const shapes = Object.fromEntries(formats.map((item) => [item.name, item.shape]));
-  function persistFormats(next) {
-    setFormats(next);
-    localStorage.setItem("oticas-formats", JSON.stringify(next));
+  async function persistFormats(next) {
+    try { await store.saveFormats(next); setFormats(next); initial.formats = next; return true; }
+    catch { setError("Não foi possível salvar os formatos. Tente novamente."); return false; }
   }
-  function saveFormat(e) {
+  async function saveFormat(e) {
     e.preventDefault();
     const name = formatDraft.name.trim();
     if (!name) return;
@@ -877,12 +919,14 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
       : formats.map((item, index) => index === editingFormat ? { name, shape: formatDraft.shape } : item);
     if (editingFormat !== null) {
       const oldName = formats[editingFormat].name;
-      const updatedItems = items.map((item) => item.type === oldName ? { ...item, type: name, shape: formatDraft.shape } : item);
+      const changed = items.filter((item) => item.type === oldName).map((item) => ({ ...item, type: name, shape: formatDraft.shape }));
+      const updatedItems = items.map((item) => changed.find((c) => c.id === item.id) || item);
+      try { await store.saveProducts(updatedItems, changed); }
+      catch { setError("Não foi possível atualizar as armações desse formato."); return; }
       setItems(updatedItems);
       frames.splice(0, frames.length, ...updatedItems);
-      localStorage.setItem("oticas-frames", JSON.stringify(updatedItems));
     }
-    persistFormats(next);
+    if (!(await persistFormats(next))) return;
     setFormatDraft({ name: "", shape: "round" });
     setEditingFormat(null);
     setError("");
@@ -932,28 +976,28 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
       setError("A imagem deve ter no máximo 10 MB.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
+    setError("Enviando imagem...");
+    store.uploadImage(file).then((url) => {
       setForm((v) => ({
         ...v,
-        image: reader.result,
-        tryOnImage: file.type === "image/png" && !v.tryOnImage ? reader.result : v.tryOnImage,
+        image: url,
+        tryOnImage: file.type === "image/png" && !v.tryOnImage ? url : v.tryOnImage,
       }));
       setError("");
-    };
-    reader.readAsDataURL(file);
+    }).catch(() => setError("Não foi possível enviar a imagem. Tente novamente."));
   }
   function chooseTryOnPhoto(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.type !== "image/png") { setError("A imagem do provador deve ser um arquivo PNG com fundo transparente."); return; }
     if (file.size > 5 * 1024 * 1024) { setError("A imagem do provador deve ter no máximo 5 MB."); return; }
-    const reader = new FileReader();
-    reader.onload = () => { setForm((current) => ({ ...current, tryOnImage: reader.result })); setError(""); };
-    reader.readAsDataURL(file);
+    setError("Enviando imagem...");
+    store.uploadImage(file, "try-on").then((url) => { setForm((current) => ({ ...current, tryOnImage: url })); setError(""); })
+      .catch(() => setError("Não foi possível enviar a imagem. Tente novamente."));
   }
-  function save(e) {
+  async function save(e) {
     e.preventDefault();
+    if (saving) return;
     if (!form.name.trim() || !form.color.trim() || Number(form.price) <= 0) {
       setError("Preencha nome, cor e um preço válido.");
       return;
@@ -972,18 +1016,22 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
       editing === "new"
         ? [product, ...items]
         : items.map((x) => (x.id === editing ? product : x));
+    setSaving(true);
+    try { await store.saveProducts(updated, [product]); }
+    catch { setError("Não foi possível salvar o produto. Tente novamente."); return; }
+    finally { setSaving(false); }
     setItems(updated);
     frames.splice(0, frames.length, ...updated);
-    localStorage.setItem("oticas-frames", JSON.stringify(updated));
     close();
   }
-  function removeProduct(product) {
+  async function removeProduct(product) {
     const confirmed = window.confirm(`Remover ${product.name}? Esta ação não poderá ser desfeita.`);
     if (!confirmed) return;
     const updated = items.filter((item) => item.id !== product.id);
+    try { await store.deleteProduct(updated, product.id); }
+    catch { alert("Não foi possível remover o produto. Tente novamente."); return; }
     setItems(updated);
     frames.splice(0, frames.length, ...updated);
-    localStorage.setItem("oticas-frames", JSON.stringify(updated));
   }
   const low = items.filter((x) => Number(x.stock) <= 3).length;
   const visibleItems = adminCategory === "todos" ? items : items.filter((item) => item.category === adminCategory);
@@ -1018,15 +1066,15 @@ Admin = function AdminEditor({ contactInfo, setContactInfo }) {
           </button>
         </nav>
         <div className="adminUser">
-          <span>EU</span>
+          <span>{(adminEmail || "EU").slice(0, 2).toUpperCase()}</span>
           <div>
-            <b>Erick</b>
-            <small>Administrador</small>
+            <b>{adminEmail ? adminEmail.split("@")[0] : "Administrador"}</b>
+            <small>{store.isRemote ? "Administrador" : "Modo demonstração"}</small>
           </div>
-          <button className="logoutButton" onClick={() => window.location.reload()} title="Sair da área administrativa"><LogOut /></button>
+          <button className="logoutButton" onClick={async () => { await store.signOut(); window.location.reload(); }} title="Sair da área administrativa"><LogOut /></button>
         </div>
       </aside>
-      {adminView !== "products" && adminView !== "orders" && <AdminSection view={adminView} items={items} />}
+      {adminView !== "products" && adminView !== "orders" && <AdminSection view={adminView} items={items} orders={orders} />}
       {adminView === "orders" && <SalesManager orders={orders} setOrders={setOrders} />}
       {adminView === "contacts" && <ContactSettings value={contactInfo} onSave={setContactInfo} />}
       <section className={adminView === "products" ? "" : "adminSectionHidden"}>
@@ -1300,4 +1348,12 @@ ProductCard = function ProductCardWithPhoto({ f, setPage, addCart }) {
   );
 };
 
-createRoot(document.getElementById("root")).render(<App />);
+const root = createRoot(document.getElementById("root"));
+store.loadStore({ frames: defaultFrames, formats: defaultFormats, contact: defaultContact })
+  .then((data) => {
+    frames.splice(0, frames.length, ...data.frames);
+    initial.formats = data.formats;
+    initial.contact = data.contact;
+  })
+  .catch((err) => console.error("Falha ao carregar a loja", err))
+  .finally(() => root.render(<App />));

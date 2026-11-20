@@ -20,15 +20,26 @@ Objetivo: a primeira tela abrir rápido no celular e o site ser lido corretament
 
 Resultado medido na home: de ~2,8 MB para ~450 KB transferidos.
 
-## Fase 2 — Dados reais com Supabase 🔜
+## Fase 2 — Dados reais com Supabase ✅ (código pronto; falta criar o projeto)
 
-Hoje produtos, pedidos e contatos ficam em `localStorage`. Isso quer dizer que o que é cadastrado no admin só existe naquele navegador e que os pedidos dos clientes não chegam à loja. É o maior bloqueio para o site funcionar como loja.
+Antes, produtos, pedidos e contatos ficavam em `localStorage`. O que era cadastrado no admin só existia naquele navegador, e os pedidos dos clientes não chegavam à loja.
 
-- ⬜ Criar projeto no Supabase: tabelas `products`, `orders`, `order_items`, `settings`.
-- ⬜ Login do painel admin (Supabase Auth) e proteção da rota `/admin`.
-- ⬜ Upload das fotos das armações no Supabase Storage.
-- ⬜ Checkout grava o pedido no banco, e o admin passa a ler pedidos reais.
-- ⬜ Migrar o conteúdo atual (`content.js` e produtos de exemplo) para o banco.
+- ✅ Esquema do banco com regras de segurança (`supabase/schema.sql`): produtos, pedidos, configurações e fotos.
+- ✅ Login do painel admin (Supabase Auth), com acesso restrito à tabela `admins`.
+- ✅ Upload das fotos das armações no Supabase Storage.
+- ✅ Checkout grava o pedido via `place_order`. O servidor recalcula preços, frete e desconto, baixa o estoque e não guarda dados de cartão (antes o número do cartão e o CVV ficavam salvos no navegador).
+- ✅ Painel lê pedidos e clientes reais (antes "Clientes" e "Visão geral" mostravam dados fictícios).
+- ✅ Modo demonstração mantido quando não há chaves do Supabase (`npm run dev` funciona sem configurar nada).
+- 🔜 **Você:** criar o projeto seguindo `supabase/README.md` e preencher o `.env`.
+
+## Fase 2.5 — Pagamento de verdade 🔜
+
+O formulário de cartão ainda **não cobra nada**: pedidos no cartão entram como "Aguardando pagamento" e o QR Code do PIX é demonstrativo.
+
+- ⬜ Integrar um gateway brasileiro (Mercado Pago, Pagar.me ou Asaas): PIX com QR Code real e cartão processado pelo gateway, sem os dados passarem pelo site.
+- ⬜ Confirmar o pagamento automaticamente (webhook → Supabase Edge Function muda o status para "Confirmado").
+- ⬜ Até lá: avaliar esconder a opção de cartão ou trocar por "combinar pagamento pelo WhatsApp".
+- ⬜ Avisar a loja a cada pedido novo (e-mail ou WhatsApp) e enviar confirmação ao cliente.
 
 ## Fase 3 — SEO local e conversão ⬜
 
@@ -55,3 +66,4 @@ Hoje produtos, pedidos e contatos ficam em `localStorage`. Isso quer dizer que o
 - ⬜ Consolidar os 19 arquivos CSS de "correções" num conjunto organizado.
 - ⬜ Dividir `main.jsx` (1300 linhas) em componentes por página.
 - ⬜ Avaliar servir o MediaPipe por CDN (jsDelivr) para tirar ~26 MB do deploy.
+- ⬜ Reduzir o peso do cliente Supabase (+57 KB gzip): ler o catálogo público com `fetch` simples e carregar a biblioteca completa só no painel.
