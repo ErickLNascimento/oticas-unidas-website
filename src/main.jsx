@@ -50,7 +50,7 @@ import "./home-carousel.css";
 import "./about.css";
 import { DEFAULT_CONTACT, DEFAULT_HOME_SLIDES, TEXTS } from "./content.js";
 import Checkout from "./Checkout.jsx";
-import { getAdminToken, loadSharedOrders, loadSharedStore, saveSharedSection, setAdminToken, updateSharedOrderStatus, uploadSharedMedia } from "./storeApi.js";
+import { getAdminToken, loadSharedOrders, loadSharedStore, saveSharedSection, setAdminToken, updateSharedOrderStatus, uploadSharedMedia, syncErpCatalog } from "./storeApi.js";
 
 const defaultFrames = [
   {
@@ -114,6 +114,13 @@ const defaultFrames = [
     tone: "#5f6450",
   },
 ];
+const storeContact = { whatsapp: "" };
+const priceLabel = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value) || 0);
+const whatsappLink = (product) => {
+  const number = (storeContact.whatsapp || "").replace(/\D/g, "");
+  const text = encodeURIComponent(`Olá! Tenho interesse na armação ${product.name}${product.color ? ` (${product.color})` : ""}${product.sku ? ` — ref. ${product.sku}` : ""}.`);
+  return number ? `https://wa.me/${number}?text=${text}` : "";
+};
 const frames = (() => {
   try {
     return JSON.parse(localStorage.getItem("oticas-frames")) || defaultFrames;
@@ -337,7 +344,7 @@ function ProductCard({ f, setPage, addCart }) {
             {f.type} · {f.color}
           </small>
         </div>
-        <strong>R$ {f.price},00</strong>
+        <strong>{priceLabel(f.price)}</strong>
       </div>
     </article>
   );
@@ -831,11 +838,14 @@ function App() {
         setProducts(shared.products);
         frames.splice(0, frames.length, ...shared.products);
       }
-      if (shared.contact) setContactInfo({ ...defaultContact, ...shared.contact });
+      if (shared.contact) { setContactInfo({ ...defaultContact, ...shared.contact }); storeContact.whatsapp = shared.contact.whatsapp || ""; }
       if (Array.isArray(shared.slides)) setSlides(shared.slides.map((slide) => ({ ...slide, imageFit: slide.imageFit || (["/hero-optica.png", "/hero-optica-1536.webp"].includes(slide.image) ? "cover" : "contain") })));
     }).catch(() => {});
   }, []);
+  const publicProducts = products.filter((product) => product.active !== false);
+  storeContact.whatsapp = contactInfo.whatsapp || storeContact.whatsapp;
   function addCart(f) {
+    if (f.purchaseEnabled === false) return;
     setCart((c) => {
       const old = c.find((x) => x.id === f.id);
       return old
@@ -847,12 +857,12 @@ function App() {
   return (
     <>
       <Header page={page} setPage={setPage} cart={cart} />
-      {page === "home" && <Home setPage={setPage} addCart={addCart} products={products} slides={slides} />}{" "}
-      {page === "catalog" && <Catalog setPage={setPage} addCart={addCart} products={products} />}{" "}
+      {page === "home" && <Home setPage={setPage} addCart={addCart} products={publicProducts} slides={slides} />}{" "}
+      {page === "catalog" && <Catalog setPage={setPage} addCart={addCart} products={publicProducts} />}{" "}
       {page === "sunglasses" && (
-        <Catalog category="sol" setPage={setPage} addCart={addCart} products={products} />
+        <Catalog category="sol" setPage={setPage} addCart={addCart} products={publicProducts} />
       )}
-      {page === "tryon" && <TryOn setPage={setPage} products={products} />}{" "}
+      {page === "tryon" && <TryOn setPage={setPage} products={publicProducts} />}{" "}
       {page === "about" && <About />}{" "}
       {page === "cart" && (
         <Cart cart={cart} setCart={setCart} setPage={setPage} />
@@ -974,6 +984,18 @@ function SalesManager({ orders, setOrders, onStatusChange }) {
 }
 
 Admin = function AdminEditor({ contactInfo, setContactInfo, products, setProducts, slides, setSlides }) {
+  const [syncing, setSyncing] = useState(false);
+  async function syncFromErp() {
+    setSyncing(true);
+    try {
+      const result = await authorizedAdminAction((token) => syncErpCatalog(token));
+      const shared = await loadSharedStore();
+      if (Array.isArray(shared.products)) { setItems(shared.products); setProducts(shared.products); frames.splice(0, frames.length, ...shared.products); }
+      alert(`Catálogo sincronizado: ${result.created} novo(s), ${result.updated} atualizado(s).${result.hasMore ? " Ainda há mudanças; clique de novo para continuar." : ""}`);
+    } catch (error) {
+      alert(error.message || "Não foi possível sincronizar com o ERP.");
+    } finally { setSyncing(false); }
+  }
   const blank = {
     category: "grau",
     name: "",
@@ -1220,6 +1242,9 @@ Admin = function AdminEditor({ contactInfo, setContactInfo, products, setProduct
             <button className="manageFormats" onClick={() => { setFormatModal(true); setError(""); }}>
               <Edit3 /> {TEXTS.admin.manageModels}
             </button>
+            <button className="manageFormats" onClick={syncFromErp} disabled={syncing} title="Buscar preços e produtos publicados no OptiFlow ERP">
+              <Download /> {syncing ? "Sincronizando..." : "Sincronizar com o ERP"}
+            </button>
             <button className="primary" onClick={openNew}>
               <Plus /> {TEXTS.admin.newProduct}
             </button>
@@ -1312,7 +1337,7 @@ Admin = function AdminEditor({ contactInfo, setContactInfo, products, setProduct
             </h2>
             <label>
               Categoria
-              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+              <select disabled={Boolean(form.erpVariantId)} title={form.erpVariantId ? "Definido no OptiFlow ERP" : undefined} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                 <option value="grau">Armação de grau</option>
                 <option value="sol">Óculos de sol</option>
               </select>
@@ -1346,7 +1371,7 @@ Admin = function AdminEditor({ contactInfo, setContactInfo, products, setProduct
               <label>
                 Cor
                 <input
-                  value={form.color}
+                  disabled={Boolean(form.erpVariantId)} title={form.erpVariantId ? "Definido no OptiFlow ERP" : undefined} value={form.color}
                   onChange={(e) => setForm({ ...form, color: e.target.value })}
                   placeholder="Ex: Azul petróleo"
                 />
@@ -1359,7 +1384,7 @@ Admin = function AdminEditor({ contactInfo, setContactInfo, products, setProduct
                   type="number"
                   min="0"
                   step="0.01"
-                  value={form.price}
+                  disabled={Boolean(form.erpVariantId)} title={form.erpVariantId ? "Definido no OptiFlow ERP" : undefined} value={form.price}
                   onChange={(e) => setForm({ ...form, price: e.target.value })}
                 />
               </label>
@@ -1463,9 +1488,9 @@ ProductCard = function ProductCardWithPhoto({ f, setPage, addCart }) {
           <Heart fill={liked ? "#9c4f3b" : "none"} />
         </button>
         <ProductVisual f={f} large />
-        <button className="quick" onClick={() => addCart(f)}>
-          {TEXTS.catalog.addToBag}
-        </button>
+        {f.purchaseEnabled === false
+          ? (whatsappLink(f) && <a className="quick consult" href={whatsappLink(f)} target="_blank" rel="noreferrer">Consultar pelo WhatsApp</a>)
+          : <button className="quick" onClick={() => addCart(f)}>{TEXTS.catalog.addToBag}</button>}
       </div>
       <div className="productInfo" onClick={() => setPage("detail")}>
         <div>
@@ -1474,7 +1499,7 @@ ProductCard = function ProductCardWithPhoto({ f, setPage, addCart }) {
             {f.type} · {f.color}
           </small>
         </div>
-        <strong>R$ {f.price},00</strong>
+        <strong>{priceLabel(f.price)}</strong>
       </div>
     </article>
   );

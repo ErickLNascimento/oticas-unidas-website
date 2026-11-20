@@ -62,6 +62,7 @@ export async function priceCart(env, cart, paymentMethod) {
     const product = byId.get(String(line?.id));
     const qty = Number(line?.qty);
     if (!product || product.active === false) throw new Error("Um dos produtos da sacola não está mais disponível.");
+    if (product.purchaseEnabled === false) throw new Error("Este produto está disponível só para consulta. Fale com a loja pelo WhatsApp.");
     if (!Number.isInteger(qty) || qty < 1 || qty > 20) throw new Error("Quantidade inválida.");
     const price = Number(product.price);
     if (!Number.isFinite(price) || price <= 0) throw new Error("Produto com preço inválido.");
