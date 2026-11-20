@@ -48,7 +48,6 @@ import "./mediapipe-tryon.css";
 import "./tryon-image-consistency.css";
 import { TEXTS } from "./content.js";
 import Checkout from "./Checkout.jsx";
-import { detectGlassesPlacement } from "./faceLandmarker.js";
 
 const defaultFrames = [
   {
@@ -145,7 +144,7 @@ function getTryOnAsset(product) {
   return product?.image?.startsWith("data:image/png") ? product.image : "";
 }
 function BrandLogo({ dark = false }) {
-  return <img className={`officialLogo ${dark ? "onDark" : ""}`} src="/logo-oficial.png" alt="Óticas Unidas — Sua visão em primeiro lugar" />;
+  return <img className={`officialLogo ${dark ? "onDark" : ""}`} src="/logo-oficial.webp" width="480" height="160" alt="Óticas Unidas — Sua visão em primeiro lugar" />;
 }
 
 function Header({ page, setPage, cart }) {
@@ -187,7 +186,7 @@ function Home({ setPage, addCart }) {
   return (
     <main>
       <section className="hero">
-        <img src="/hero-optica.png" />
+        <img src="/hero-optica-1536.webp" srcSet="/hero-optica-768.webp 768w, /hero-optica-1536.webp 1536w" sizes="100vw" width="1536" height="1024" alt="Mulher usando óculos de armação translúcida" fetchPriority="high" decoding="async" />
         <div className="heroCopy">
           <span className="eyebrow">{TEXTS.home.collectionLabel}</span>
           <h1>
@@ -338,7 +337,7 @@ function TryOn({ setPage }) {
     if (file) { setPhoto(URL.createObjectURL(file)); setPlacement(null); setFaceStatus("Detectando seu rosto..."); }
   }
   async function locateFace(image) {
-    try { const detected = await detectGlassesPlacement(image); setPlacement(detected); setFaceStatus(""); return detected; }
+    try { const { detectGlassesPlacement } = await import("./faceLandmarker.js"); const detected = await detectGlassesPlacement(image); setPlacement(detected); setFaceStatus(""); return detected; }
     catch { setFaceStatus("Não encontramos um rosto. Use uma foto frontal, nítida e bem iluminada."); return null; }
   }
   function generateResult() {
