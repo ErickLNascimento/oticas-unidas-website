@@ -53,7 +53,3 @@ export async function updateSharedOrderStatus(id, status, token = getAdminToken(
     body: JSON.stringify({ status }),
   });
 }
-
-export async function syncErpCatalog(token = getAdminToken()) {
-  return request("/api/admin/catalog/sync", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: "{}" });
-}

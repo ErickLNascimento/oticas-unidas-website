@@ -50,7 +50,7 @@ import "./home-carousel.css";
 import "./about.css";
 import { DEFAULT_CONTACT, DEFAULT_HOME_SLIDES, TEXTS } from "./content.js";
 import Checkout from "./Checkout.jsx";
-import { getAdminToken, loadSharedOrders, loadSharedStore, saveSharedSection, setAdminToken, updateSharedOrderStatus, uploadSharedMedia, syncErpCatalog } from "./storeApi.js";
+import { getAdminToken, loadSharedOrders, loadSharedStore, saveSharedSection, setAdminToken, updateSharedOrderStatus, uploadSharedMedia } from "./storeApi.js";
 
 const defaultFrames = [
   {
@@ -114,13 +114,7 @@ const defaultFrames = [
     tone: "#5f6450",
   },
 ];
-const storeContact = { whatsapp: "" };
 const priceLabel = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value) || 0);
-const whatsappLink = (product) => {
-  const number = (storeContact.whatsapp || "").replace(/\D/g, "");
-  const text = encodeURIComponent(`Olá! Tenho interesse na armação ${product.name}${product.color ? ` (${product.color})` : ""}${product.sku ? ` — ref. ${product.sku}` : ""}.`);
-  return number ? `https://wa.me/${number}?text=${text}` : "";
-};
 const frames = (() => {
   try {
     return JSON.parse(localStorage.getItem("oticas-frames")) || defaultFrames;
@@ -838,14 +832,12 @@ function App() {
         setProducts(shared.products);
         frames.splice(0, frames.length, ...shared.products);
       }
-      if (shared.contact) { setContactInfo({ ...defaultContact, ...shared.contact }); storeContact.whatsapp = shared.contact.whatsapp || ""; }
+      if (shared.contact) setContactInfo({ ...defaultContact, ...shared.contact });
       if (Array.isArray(shared.slides)) setSlides(shared.slides.map((slide) => ({ ...slide, imageFit: slide.imageFit || (["/hero-optica.png", "/hero-optica-1536.webp"].includes(slide.image) ? "cover" : "contain") })));
     }).catch(() => {});
   }, []);
   const publicProducts = products.filter((product) => product.active !== false);
-  storeContact.whatsapp = contactInfo.whatsapp || storeContact.whatsapp;
   function addCart(f) {
-    if (f.purchaseEnabled === false) return;
     setCart((c) => {
       const old = c.find((x) => x.id === f.id);
       return old
@@ -980,22 +972,10 @@ function SalesManager({ orders, setOrders, onStatusChange }) {
     setOrders(updated); localStorage.setItem("oticas-orders", JSON.stringify(updated)); onStatusChange?.(orderId, status).catch(() => {});
     setSelectedOrder((current) => current?.id === orderId ? { ...current, status } : current);
   }
-  return <section className="adminSecondary salesManager"><header><div><span className="eyebrow">VENDAS</span><h1>Pedidos</h1><p>Gerencie pagamentos, clientes e entregas.</p></div></header><div className="stats"><div><small>Total vendido</small><b>{money(revenue)}</b><span>Todos os pedidos</span></div><div><small>Pedidos recebidos</small><b>{orders.length}</b><span className="green">Registrados no checkout</span></div><div><small>Aguardando pagamento</small><b>{orders.filter((order) => order.status?.includes("Aguardando")).length}</b><span className="red">Requer atenção</span></div></div><div className="tableBox"><div className="tableTools"><div className="search"><Search/><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar pedido ou cliente..."/></div></div>{filtered.length ? <table><thead><tr><th>PEDIDO</th><th>CLIENTE</th><th>PAGAMENTO</th><th>TOTAL</th><th>STATUS</th><th>AÇÕES</th></tr></thead><tbody>{filtered.map((order) => <tr key={order.id}><td>#{order.id}</td><td><span><b>{order.customer?.name}</b><small>{order.customer?.email}</small></span></td><td>{order.payment === "pix" ? "PIX" : "Cartão"}</td><td>{money(order.total)}</td><td><select className="statusSelect" value={order.status} onChange={(e) => updateStatus(order.id, e.target.value)}><option>Aguardando PIX</option><option>Confirmado</option><option>Em separação</option><option>Enviado</option><option>Entregue</option><option>Cancelado</option></select></td><td><button className="editButton" onClick={() => setSelectedOrder(order)}><Eye/> Ver detalhes</button></td></tr>)}</tbody></table> : <div className="noOrders"><ShoppingBag/><h2>Nenhum pedido encontrado</h2><p>As vendas concluídas no checkout aparecerão aqui.</p></div>}</div>{selectedOrder && <div className="overlay"><div className="modal orderModal"><button className="close" onClick={() => setSelectedOrder(null)}><X/></button><span className="eyebrow">PEDIDO #{selectedOrder.id}</span><h2>Detalhes da venda</h2><div className="orderDetailGrid"><div className="orderDetailBlock"><h3><User/> Cliente</h3><p><b>{selectedOrder.customer?.name}</b></p><p>{selectedOrder.customer?.email}</p><p>{selectedOrder.customer?.phone}</p>{selectedOrder.customer?.cpf && <p>CPF: {selectedOrder.customer.cpf}</p>}</div><div className="orderDetailBlock"><h3><MapPin/> Entrega</h3><p>{selectedOrder.customer?.street}, {selectedOrder.customer?.number}</p>{selectedOrder.customer?.complement && <p>{selectedOrder.customer.complement}</p>}<p>{selectedOrder.customer?.district}</p><p>{selectedOrder.customer?.city} · {selectedOrder.customer?.state}</p><p>CEP {selectedOrder.customer?.cep}</p></div></div><div className="orderDetailBlock paymentDetail"><h3><CreditCard/> Pagamento</h3><p><span>Forma</span><b>{selectedOrder.payment === "pix" ? "PIX" : "Cartão de crédito"}</b></p><p><span>Status</span><select className="statusSelect" value={selectedOrder.status} onChange={(e) => updateStatus(selectedOrder.id, e.target.value)}><option>Aguardando PIX</option><option>Confirmado</option><option>Em separação</option><option>Enviado</option><option>Entregue</option><option>Cancelado</option></select></p></div><div className="orderProducts"><h3>Itens do pedido</h3>{selectedOrder.items?.map((item) => <div key={item.id}><span>{item.qty}× {item.name}<small>{item.type} · {item.color}</small></span><b>{money(item.price * item.qty)}</b></div>)}<hr/><p><span>Subtotal</span><b>{money(selectedOrder.subtotal)}</b></p><p><span>Frete</span><b>{selectedOrder.shipping ? money(selectedOrder.shipping) : "Grátis"}</b></p>{selectedOrder.discount > 0 && <p className="discount"><span>Desconto</span><b>− {money(selectedOrder.discount)}</b></p>}<p className="orderGrandTotal"><span>Total</span><b>{money(selectedOrder.total)}</b></p></div></div></div>}</section>;
+  return <section className="adminSecondary salesManager"><header><div><span className="eyebrow">VENDAS</span><h1>Pedidos</h1><p>Gerencie pagamentos, clientes e entregas.</p></div></header><div className="stats"><div><small>Total vendido</small><b>{money(revenue)}</b><span>Todos os pedidos</span></div><div><small>Pedidos recebidos</small><b>{orders.length}</b><span className="green">Registrados no checkout</span></div><div><small>Aguardando pagamento</small><b>{orders.filter((order) => order.status?.includes("Aguardando")).length}</b><span className="red">Requer atenção</span></div></div><div className="tableBox"><div className="tableTools"><div className="search"><Search/><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar pedido ou cliente..."/></div></div>{filtered.length ? <table><thead><tr><th>PEDIDO</th><th>CLIENTE</th><th>PAGAMENTO</th><th>TOTAL</th><th>STATUS</th><th>AÇÕES</th></tr></thead><tbody>{filtered.map((order) => <tr key={order.id}><td>#{order.id}</td><td><span><b>{order.customer?.name}</b><small>{order.customer?.email}</small></span></td><td>{order.payment === "pix" ? "PIX" : "Cartão"}</td><td>{money(order.total)}</td><td><select className="statusSelect" value={order.status} onChange={(e) => updateStatus(order.id, e.target.value)}><option>Aguardando PIX</option><option>Aguardando pagamento</option><option>Pagamento não aprovado</option><option>Confirmado</option><option>Em separação</option><option>Enviado</option><option>Entregue</option><option>Cancelado</option></select></td><td><button className="editButton" onClick={() => setSelectedOrder(order)}><Eye/> Ver detalhes</button></td></tr>)}</tbody></table> : <div className="noOrders"><ShoppingBag/><h2>Nenhum pedido encontrado</h2><p>As vendas concluídas no checkout aparecerão aqui.</p></div>}</div>{selectedOrder && <div className="overlay"><div className="modal orderModal"><button className="close" onClick={() => setSelectedOrder(null)}><X/></button><span className="eyebrow">PEDIDO #{selectedOrder.id}</span><h2>Detalhes da venda</h2><div className="orderDetailGrid"><div className="orderDetailBlock"><h3><User/> Cliente</h3><p><b>{selectedOrder.customer?.name}</b></p><p>{selectedOrder.customer?.email}</p><p>{selectedOrder.customer?.phone}</p>{selectedOrder.customer?.cpf && <p>CPF: {selectedOrder.customer.cpf}</p>}</div><div className="orderDetailBlock"><h3><MapPin/> Entrega</h3><p>{selectedOrder.customer?.street}, {selectedOrder.customer?.number}</p>{selectedOrder.customer?.complement && <p>{selectedOrder.customer.complement}</p>}<p>{selectedOrder.customer?.district}</p><p>{selectedOrder.customer?.city} · {selectedOrder.customer?.state}</p><p>CEP {selectedOrder.customer?.cep}</p></div></div><div className="orderDetailBlock paymentDetail"><h3><CreditCard/> Pagamento</h3><p><span>Forma</span><b>{selectedOrder.payment === "pix" ? "PIX" : "Cartão de crédito"}</b></p><p><span>Status</span><select className="statusSelect" value={selectedOrder.status} onChange={(e) => updateStatus(selectedOrder.id, e.target.value)}><option>Aguardando PIX</option><option>Aguardando pagamento</option><option>Pagamento não aprovado</option><option>Confirmado</option><option>Em separação</option><option>Enviado</option><option>Entregue</option><option>Cancelado</option></select></p></div><div className="orderProducts"><h3>Itens do pedido</h3>{selectedOrder.items?.map((item) => <div key={item.id}><span>{item.qty}× {item.name}<small>{item.type} · {item.color}</small></span><b>{money(item.price * item.qty)}</b></div>)}<hr/><p><span>Subtotal</span><b>{money(selectedOrder.subtotal)}</b></p><p><span>Frete</span><b>{selectedOrder.shipping ? money(selectedOrder.shipping) : "Grátis"}</b></p>{selectedOrder.discount > 0 && <p className="discount"><span>Desconto</span><b>− {money(selectedOrder.discount)}</b></p>}<p className="orderGrandTotal"><span>Total</span><b>{money(selectedOrder.total)}</b></p></div></div></div>}</section>;
 }
 
 Admin = function AdminEditor({ contactInfo, setContactInfo, products, setProducts, slides, setSlides }) {
-  const [syncing, setSyncing] = useState(false);
-  async function syncFromErp() {
-    setSyncing(true);
-    try {
-      const result = await authorizedAdminAction((token) => syncErpCatalog(token));
-      const shared = await loadSharedStore();
-      if (Array.isArray(shared.products)) { setItems(shared.products); setProducts(shared.products); frames.splice(0, frames.length, ...shared.products); }
-      alert(`Catálogo sincronizado: ${result.created} novo(s), ${result.updated} atualizado(s).${result.hasMore ? " Ainda há mudanças; clique de novo para continuar." : ""}`);
-    } catch (error) {
-      alert(error.message || "Não foi possível sincronizar com o ERP.");
-    } finally { setSyncing(false); }
-  }
   const blank = {
     category: "grau",
     name: "",
@@ -1242,9 +1222,6 @@ Admin = function AdminEditor({ contactInfo, setContactInfo, products, setProduct
             <button className="manageFormats" onClick={() => { setFormatModal(true); setError(""); }}>
               <Edit3 /> {TEXTS.admin.manageModels}
             </button>
-            <button className="manageFormats" onClick={syncFromErp} disabled={syncing} title="Buscar preços e produtos publicados no OptiFlow ERP">
-              <Download /> {syncing ? "Sincronizando..." : "Sincronizar com o ERP"}
-            </button>
             <button className="primary" onClick={openNew}>
               <Plus /> {TEXTS.admin.newProduct}
             </button>
@@ -1337,7 +1314,7 @@ Admin = function AdminEditor({ contactInfo, setContactInfo, products, setProduct
             </h2>
             <label>
               Categoria
-              <select disabled={Boolean(form.erpVariantId)} title={form.erpVariantId ? "Definido no OptiFlow ERP" : undefined} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                 <option value="grau">Armação de grau</option>
                 <option value="sol">Óculos de sol</option>
               </select>
@@ -1371,7 +1348,7 @@ Admin = function AdminEditor({ contactInfo, setContactInfo, products, setProduct
               <label>
                 Cor
                 <input
-                  disabled={Boolean(form.erpVariantId)} title={form.erpVariantId ? "Definido no OptiFlow ERP" : undefined} value={form.color}
+                  value={form.color}
                   onChange={(e) => setForm({ ...form, color: e.target.value })}
                   placeholder="Ex: Azul petróleo"
                 />
@@ -1384,7 +1361,7 @@ Admin = function AdminEditor({ contactInfo, setContactInfo, products, setProduct
                   type="number"
                   min="0"
                   step="0.01"
-                  disabled={Boolean(form.erpVariantId)} title={form.erpVariantId ? "Definido no OptiFlow ERP" : undefined} value={form.price}
+                  value={form.price}
                   onChange={(e) => setForm({ ...form, price: e.target.value })}
                 />
               </label>
@@ -1488,9 +1465,9 @@ ProductCard = function ProductCardWithPhoto({ f, setPage, addCart }) {
           <Heart fill={liked ? "#9c4f3b" : "none"} />
         </button>
         <ProductVisual f={f} large />
-        {f.purchaseEnabled === false
-          ? (whatsappLink(f) && <a className="quick consult" href={whatsappLink(f)} target="_blank" rel="noreferrer">Consultar pelo WhatsApp</a>)
-          : <button className="quick" onClick={() => addCart(f)}>{TEXTS.catalog.addToBag}</button>}
+        <button className="quick" onClick={() => addCart(f)}>
+          {TEXTS.catalog.addToBag}
+        </button>
       </div>
       <div className="productInfo" onClick={() => setPage("detail")}>
         <div>
