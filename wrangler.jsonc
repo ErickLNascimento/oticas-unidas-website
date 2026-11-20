@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "oticas-unidas-website",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-08-16",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "oticas-unidas-db",
+      "database_id": "27fa09d4-c52f-4477-b445-1d015fab6559",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "oticas-unidas-media"
+    }
+  ]
+}
