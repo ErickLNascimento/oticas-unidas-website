@@ -1,0 +1,3 @@
+ADMIN_TOKEN="defina-uma-chave-administrativa-forte"
+MERCADO_PAGO_PUBLIC_KEY="TEST-sua-public-key"
+MERCADO_PAGO_ACCESS_TOKEN="TEST-seu-access-token"

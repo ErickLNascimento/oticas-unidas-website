@@ -9,6 +9,7 @@ import {
   QrCode,
   ShieldCheck,
 } from "lucide-react";
+import MercadoPagoPayment from "./MercadoPagoPayment.jsx";
 import "./checkout.css";
 import "./cep-lookup.css";
 
@@ -35,10 +36,6 @@ export default function Checkout({ cart, setCart, setPage }) {
     district: "",
     city: "",
     state: "",
-    cardName: "",
-    cardNumber: "",
-    expiry: "",
-    cvv: "",
   });
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const shipping = subtotal >= 499 ? 0 : 24.9;
@@ -46,13 +43,6 @@ export default function Checkout({ cart, setCart, setPage }) {
   const total = subtotal + shipping - discount;
   const update = (key) => (event) =>
     setForm({ ...form, [key]: event.target.value });
-  const updateCardNumber = (event) => {
-    const digits = event.target.value.replace(/\D/g, "").slice(0, 16);
-    setForm({
-      ...form,
-      cardNumber: digits.replace(/(.{4})/g, "$1 ").trim(),
-    });
-  };
   const updatePhone = (event) => {
     const digits = event.target.value.replace(/\D/g, "").slice(0, 11);
     let formatted = digits;
@@ -98,28 +88,8 @@ export default function Checkout({ cart, setCart, setPage }) {
     setStep(step + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  function finish() {
-    if (
-      payment === "card" &&
-      ["cardName", "cardNumber", "expiry", "cvv"].some(
-        (key) => !form[key].trim(),
-      )
-    ) {
-      setError("Preencha os dados do cartão.");
-      return;
-    }
-    const completed = {
-      id: `OU-${Date.now().toString().slice(-6)}`,
-      date: new Date().toISOString(),
-      customer: form,
-      items: cart,
-      payment,
-      subtotal,
-      shipping,
-      discount,
-      total,
-      status: payment === "pix" ? "Aguardando PIX" : "Confirmado",
-    };
+  function finish(result) {
+    const completed = { ...result.order, pix: result.pix || null };
     const existing = JSON.parse(localStorage.getItem("oticas-orders") || "[]");
     localStorage.setItem(
       "oticas-orders",
@@ -151,13 +121,13 @@ export default function Checkout({ cart, setCart, setPage }) {
         <p>
           Seu pedido <b>#{order.id}</b> foi recebido.
         </p>
-        {order.payment === "pix" && (
+        {order.payment === "pix" && order.pix && (
           <div className="pixBox">
-            <QrCode />
+            {order.pix.qrCodeBase64 ? <img src={`data:image/png;base64,${order.pix.qrCodeBase64}`} alt="QR Code PIX" /> : <QrCode />}
             <div>
-              <b>Pagamento via PIX</b>
+              <b>PIX de teste gerado</b>
               <span>
-                Use o QR Code demonstrativo para concluir o pagamento.
+                Use o QR Code do Mercado Pago para validar o fluxo sandbox.
               </span>
             </div>
           </div>
@@ -345,71 +315,17 @@ export default function Checkout({ cart, setCart, setPage }) {
                   </span>
                 </button>
               </div>
-              {payment === "pix" ? (
-                <div className="paymentNotice">
-                  <QrCode />
-                  <p>
-                    Após confirmar o pedido, exibiremos o QR Code para
-                    pagamento.
-                  </p>
-                </div>
-              ) : (
-                <div className="cardFields">
-                  <label>
-                    Nome impresso no cartão *
-                    <input
-                      value={form.cardName}
-                      onChange={update("cardName")}
-                    />
-                  </label>
-                  <label>
-                    Número do cartão *
-                  <input
-                    value={form.cardNumber}
-                    onChange={updateCardNumber}
-                    inputMode="numeric"
-                    autoComplete="cc-number"
-                    maxLength="19"
-                    placeholder="0000 0000 0000 0000"
-                  />
-                  </label>
-                  <div className="checkoutRow">
-                    <label>
-                      Validade *
-                      <input
-                        value={form.expiry}
-                        onChange={update("expiry")}
-                        placeholder="MM/AA"
-                      />
-                    </label>
-                    <label>
-                      CVV *
-                      <input
-                        value={form.cvv}
-                        onChange={update("cvv")}
-                        placeholder="000"
-                      />
-                    </label>
-                  </div>
-                </div>
-              )}
+              <MercadoPagoPayment
+                key={payment}
+                amount={total}
+                payment={payment}
+                checkout={{ cart, customer: form }}
+                onPaymentCreated={finish}
+              />
             </>
           )}
           {error && <p className="checkoutError">{error}</p>}
-          <button
-            className="primary checkoutContinue"
-            onClick={step < 3 ? next : finish}
-          >
-            {step < 3 ? (
-              <>
-                Continuar <ArrowRight />
-              </>
-            ) : (
-              <>
-                Confirmar pedido <ShieldCheck />
-              </>
-            )}
-          </button>
+          {step < 3 && <button className="primary checkoutContinue" onClick={next}>Continuar <ArrowRight /></button>}
         </section>
         <aside className="checkoutSummary">
           <h2>Resumo do pedido</h2>
