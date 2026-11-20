@@ -1,15 +1,6 @@
-const json = (data, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+import { json, orderId, priceCart, safeCustomer } from "../../../server/http.mjs";
 
 const cleanDigits = (value) => String(value || "").replace(/\D/g, "");
-const round = (value) => Math.round(value * 100) / 100;
-
-function calculate(cart, paymentMethod) {
-  const subtotal = round(cart.reduce((sum, item) => sum + Number(item.price) * Math.max(1, Number(item.qty) || 1), 0));
-  const shipping = subtotal >= 499 ? 0 : 24.9;
-  const discount = paymentMethod === "pix" ? round(subtotal * 0.1) : 0;
-  return { subtotal, shipping, discount, total: round(subtotal + shipping - discount) };
-}
 
 export async function onRequestPost({ request, env }) {
   if (!env.MERCADO_PAGO_ACCESS_TOKEN?.startsWith("TEST-")) {
@@ -27,8 +18,10 @@ export async function onRequestPost({ request, env }) {
   if (!["pix", "card"].includes(expectedMethod) || actualMethod !== expectedMethod) {
     return json({ error: "Forma de pagamento divergente. Atualize a página e tente novamente." }, 400);
   }
-  const totals = calculate(cart, paymentData.payment_method_id);
-  if (!Number.isFinite(totals.total) || totals.total <= 0) return json({ error: "Valor do pedido inválido." }, 400);
+  let priced;
+  try { priced = await priceCart(env, cart, actualMethod); }
+  catch (error) { return json({ error: error.message }, 400); }
+  const { items, ...totals } = priced;
 
   const payer = {
     email: customer.email,
@@ -40,7 +33,7 @@ export async function onRequestPost({ request, env }) {
   const payload = {
     transaction_amount: totals.total,
     token: paymentData.token,
-    description: `Óticas Unidas - ${cart.length} item(ns)`,
+    description: `Óticas Unidas - ${items.length} item(ns)`,
     installments: Number(paymentData.installments || 1),
     payment_method_id: paymentData.payment_method_id,
     issuer_id: paymentData.issuer_id,
@@ -60,13 +53,13 @@ export async function onRequestPost({ request, env }) {
   const payment = await response.json();
   if (!response.ok) return json({ error: payment.message || "Pagamento recusado pelo ambiente de testes.", details: payment.cause || [] }, response.status);
 
-  const id = `OU-${Date.now().toString().slice(-6)}`;
+  const id = orderId();
   const status = payment.status === "approved" ? "Confirmado" : payment.status === "pending" ? "Aguardando pagamento" : "Pagamento não aprovado";
   const order = {
     id,
     date: new Date().toISOString(),
-    customer: { ...customer, cardName: undefined, cardNumber: undefined, expiry: undefined, cvv: undefined },
-    items: cart,
+    customer: safeCustomer(customer),
+    items,
     payment: paymentData.payment_method_id === "pix" ? "pix" : "card",
     paymentId: String(payment.id),
     paymentStatus: payment.status,

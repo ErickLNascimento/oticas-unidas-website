@@ -42,14 +42,6 @@ export async function uploadSharedMedia(file, token = getAdminToken()) {
   });
 }
 
-export async function createSharedOrder(order) {
-  return request("/api/orders", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(order),
-  });
-}
-
 export async function loadSharedOrders(token = getAdminToken()) {
   return request("/api/orders", { headers: { authorization: `Bearer ${token}` } });
 }
