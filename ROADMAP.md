@@ -20,15 +20,17 @@ Objetivo: a primeira tela abrir rápido no celular e o site ser lido corretament
 
 Resultado medido na home: de ~2,8 MB para ~450 KB transferidos.
 
-## Fase 2 — Dados reais com Supabase 🔜
+## Fase 2 — Dados compartilhados e segurança ✅
 
-Hoje produtos, pedidos e contatos ficam em `localStorage`. Isso quer dizer que o que é cadastrado no admin só existe naquele navegador e que os pedidos dos clientes não chegam à loja. É o maior bloqueio para o site funcionar como loja.
+Decisão: o site usa **Cloudflare Pages Functions + D1** (dados) e **R2** (fotos), com pagamento via Mercado Pago (sandbox). A tentativa com Supabase foi descartada.
 
-- ⬜ Criar projeto no Supabase: tabelas `products`, `orders`, `order_items`, `settings`.
-- ⬜ Login do painel admin (Supabase Auth) e proteção da rota `/admin`.
-- ⬜ Upload das fotos das armações no Supabase Storage.
-- ⬜ Checkout grava o pedido no banco, e o admin passa a ler pedidos reais.
-- ⬜ Migrar o conteúdo atual (`content.js` e produtos de exemplo) para o banco.
+- ✅ Produtos, formatos, contatos e destaques da Home salvos no D1 e iguais para todos os visitantes.
+- ✅ Fotos enviadas pelo painel vão para o R2 (só PNG, JPEG e WebP).
+- ✅ Pagamento recalcula preço, frete e desconto PIX no servidor a partir do catálogo, ignorando o preço vindo do navegador.
+- ✅ Removida a rota pública que aceitava pedidos falsos; chave do painel comparada em tempo constante; número de pedido sem colisão.
+- ✅ Testes automáticos: `npm test`.
+- 🔜 Pedir a chave ao abrir o painel (hoje ela só é pedida ao salvar ou ver pedidos).
+- 🔜 Pagamento real no Mercado Pago (hoje só credenciais TEST) e confirmação automática por webhook.
 
 ## Fase 3 — SEO local e conversão ⬜
 
@@ -55,3 +57,12 @@ Hoje produtos, pedidos e contatos ficam em `localStorage`. Isso quer dizer que o
 - ⬜ Consolidar os 19 arquivos CSS de "correções" num conjunto organizado.
 - ⬜ Dividir `main.jsx` (1300 linhas) em componentes por página.
 - ⬜ Avaliar servir o MediaPipe por CDN (jsDelivr) para tirar ~26 MB do deploy.
+
+## Fase futura — Integração com o OptiFlow ERP ⬜
+
+Por enquanto o site é **independente** do ERP. Quando a integração for retomada, o ponto de partida já existe:
+
+- **ERP:** PR [optiflow-erp#33](https://github.com/ErickLNascimento/optiflow-erp/pull/33) (branch `feat/storefront-catalog`, em rascunho). Faz a publicação explícita de variantes por loja, com preço de canal, e o feed incremental `catalog.read`. Testado contra o `main` de 20/11/2026.
+- **Site:** o código de sincronização foi escrito e testado, mas retirado para manter o site independente. Para recuperá-lo, use o commit `32cfc8c` deste repositório (`git show 32cfc8c`). Ele traz o botão "Sincronizar com o ERP", o consumidor no D1 (migration `0002`), 13 testes e o guia `ERP-INTEGRATION.md`.
+- Regras combinadas: o ERP é dono de preço, cor, SKU, categoria e publicação; o site é dono de fotos, títulos e PNG do provador. A credencial do ERP fica só no servidor.
+- Antes de retomar: rebasear o PR #33 no `main` do ERP da época, definir empresa e loja reais e decidir estoque e reservas, porque hoje os itens do ERP seriam só para consulta.
